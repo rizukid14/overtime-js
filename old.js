@@ -1,17 +1,15 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Calculator } from 'lucide-react';
 
 export default function OvertimeCalculator() {
-  const [basicSalary, setBasicSalary] = useState(900100200)
+  const [basicSalary, setBasicSalary] = useState(10000000);
   const [weekdayEntries, setWeekdayEntries] = useState([]);
   const [holidayEntries, setHolidayEntries] = useState([]);
-  const [maxCap, setMaxCap] = useState(2500000);
-  const [useMaxCap, setUseMaxCap] = useState(true);
 
   const hourlyRate = basicSalary / 173;
 
   const addEntry = (type) => {
-    const newEntry = { hours: '', date: '' };
+    const newEntry = { hours: 0, date: '' };
     if (type === 'weekday') {
       setWeekdayEntries([...weekdayEntries, newEntry]);
     } else {
@@ -39,76 +37,70 @@ export default function OvertimeCalculator() {
     }
   };
 
-  // Logic from App.js
+  // Hitung overtime weekday (1 jam pertama 150%, sisanya 200%)
   const calculateWeekdayProgressive = () => {
-    let total150 = 0, total200 = 0;
-    let hours150 = 0, hours200 = 0;
-    
+    let total = 0;
+    let rate150 = 0, rate200 = 0;
+
     weekdayEntries.forEach(entry => {
       const hours = parseFloat(entry.hours) || 0;
-      if (hours === 0) return;
+      let remaining = hours;
 
-      if (hours > 0) {
-        const h150 = Math.min(hours, 1);
-        total150 += h150 * hourlyRate * 1.5;
-        hours150 += h150;
+      // 1 jam pertama per hari: 150%
+      if (remaining > 0) {
+        const hours150 = Math.min(remaining, 1);
+        total += hours150 * hourlyRate * 1.5;
+        rate150 += hours150;
+        remaining -= hours150;
       }
 
-      if (hours > 1) {
-        const h200 = hours - 1;
-        total200 += h200 * hourlyRate * 2;
-        hours200 += h200;
+      // Sisanya: 200%
+      if (remaining > 0) {
+        total += remaining * hourlyRate * 2;
+        rate200 += remaining;
       }
     });
 
-    return { 
-      total: total150 + total200,
-      rate150: hours150, 
-      rate200: hours200,
-      amount150: total150,
-      amount200: total200
-    };
+    return { total, rate150, rate200 };
   };
-  
-  // Logic from App.js
+
+  // Hitung overtime holiday (progresif 200%, 300%, 400%)
   const calculateHolidayProgressive = () => {
-    let total200 = 0, total300 = 0, total400 = 0;
-    let sumH200 = 0, sumH300 = 0, sumH400 = 0;
+    let total = 0;
+    let rate200 = 0, rate300 = 0, rate400 = 0;
 
     holidayEntries.forEach(entry => {
       const hours = parseFloat(entry.hours) || 0;
-      if (hours === 0) return;
+      let remaining = hours;
 
-      // Jam 1–8 → 200%
-      const h200 = Math.min(hours, 8);
-      total200 += h200 * hourlyRate * 2;
-      sumH200 += h200;
-
-      // Jam ke-9 → 300%
-      if (hours > 8) {
-        const h300 = Math.min(hours - 8, 1);
-        total300 += h300 * hourlyRate * 3;
-        sumH300 += h300;
+      // 8 jam pertama: 200%
+      if (remaining > 0) {
+        const hours200 = Math.min(remaining, 8);
+        total += hours200 * hourlyRate * 2;
+        rate200 += hours200;
+        remaining -= hours200;
       }
 
-      // Jam ke-10 dst → 400%
-      if (hours > 9) {
-        const h400 = hours - 9;
-        total400 += h400 * hourlyRate * 4;
-        sumH400 += h400;
+      // 8 jam kedua: 300%
+      if (remaining > 0) {
+        const hours300 = Math.min(remaining, 8);
+        total += hours300 * hourlyRate * 3;
+        rate300 += hours300;
+        remaining -= hours300;
+      }
+
+      // Sisanya: 400%
+      if (remaining > 0) {
+        total += remaining * hourlyRate * 4;
+        rate400 += remaining;
       }
     });
-    
-    return {
-      total: total200 + total300 + total400,
-      rate200: sumH200,
-      rate300: sumH300,
-      rate400: sumH400,
-      amount200: total200,
-      amount300: total300,
-      amount400: total400,
-    };
+
+    return { total, rate200, rate300, rate400 };
   };
+
+  const [maxCap, setMaxCap] = useState(2500000);
+  const [useMaxCap, setUseMaxCap] = useState(true);
 
   const weekdayCalc = calculateWeekdayProgressive();
   const holidayCalc = calculateHolidayProgressive();
@@ -134,17 +126,7 @@ export default function OvertimeCalculator() {
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <Calculator className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-3xl font-bold text-gray-800">Kalkulator Overtime Gabungan</h1>
-          </div>
-
-          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-800">
-                <p className="font-bold mb-1">⚠️ Perhitungan Estimasi</p>
-                <p>Kalkulator ini menggabungkan tampilan dari <code className="font-mono bg-yellow-200 px-1 rounded">old.js</code> dengan logika perhitungan dari <code className="font-mono bg-yellow-200 px-1 rounded">App.js</code>. Pastikan hasilnya sesuai ekspektasi Anda.</p>
-              </div>
-            </div>
+            <h1 className="text-3xl font-bold text-gray-800">Kalkulator Overtime Progresif</h1>
           </div>
 
           <div className="mb-6 p-4 bg-indigo-50 rounded-lg">
@@ -183,14 +165,17 @@ export default function OvertimeCalculator() {
                 placeholder="Maksimal overtime per bulan"
               />
             )}
+            <p className="text-xs text-orange-700 mt-2">
+              💡 Overtime akan dibatasi maksimal {formatCurrency(maxCap)} per bulan
+            </p>
           </div>
 
-          {/* Weekday Section */}
+          {/* Weekday Section - Progressive */}
           <div className="mb-6">
             <div className="flex justify-between items-center mb-3">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">
-                  Overtime Weekday
+                  Overtime Weekday (Progresif)
                 </h2>
                 <p className="text-sm text-gray-600">Senin - Kamis</p>
               </div>
@@ -203,7 +188,7 @@ export default function OvertimeCalculator() {
             </div>
 
             <div className="bg-green-50 p-4 rounded-lg mb-4">
-              <h3 className="font-bold text-green-900 mb-2">⚡ Sistem Perhitungan Per Hari:</h3>
+              <h3 className="font-bold text-green-900 mb-2">⚡ Sistem Progresif Per Hari:</h3>
               <ul className="text-sm text-green-800 space-y-1">
                 <li>• <strong>1 jam pertama:</strong> Rate 150%</li>
                 <li>• <strong>Jam ke-2 dst:</strong> Rate 200%</li>
@@ -221,7 +206,7 @@ export default function OvertimeCalculator() {
                 />
                 <input
                   type="text"
-                  placeholder="Tanggal/Keterangan"
+                  placeholder="Tanggal (14/10)"
                   value={entry.date}
                   onChange={(e) => updateEntry('weekday', idx, 'date', e.target.value)}
                   className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -241,12 +226,12 @@ export default function OvertimeCalculator() {
               </p>
               {weekdayCalc.rate150 > 0 && (
                 <p className="text-sm text-green-700">
-                  • {weekdayCalc.rate150.toFixed(2)} jam @ 150% = {formatCurrency(weekdayCalc.amount150)}
+                  • {weekdayCalc.rate150} jam @ 150% = {formatCurrency(weekdayCalc.rate150 * hourlyRate * 1.5)}
                 </p>
               )}
               {weekdayCalc.rate200 > 0 && (
                 <p className="text-sm text-emerald-700">
-                  • {weekdayCalc.rate200.toFixed(2)} jam @ 200% = {formatCurrency(weekdayCalc.amount200)}
+                  • {weekdayCalc.rate200} jam @ 200% = {formatCurrency(weekdayCalc.rate200 * hourlyRate * 2)}
                 </p>
               )}
               <div className="border-t-2 border-gray-300 pt-2 mt-2">
@@ -257,12 +242,12 @@ export default function OvertimeCalculator() {
             </div>
           </div>
 
-          {/* Holiday Section */}
+          {/* Holiday Section - Progressive */}
           <div className="mb-6">
             <div className="flex justify-between items-center mb-3">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">
-                  Overtime Weekend/Holiday
+                  Overtime Weekend/Holiday (Progresif)
                 </h2>
                 <p className="text-sm text-gray-600">Jumat - Minggu & Hari Libur</p>
               </div>
@@ -275,11 +260,11 @@ export default function OvertimeCalculator() {
             </div>
 
             <div className="bg-blue-50 p-4 rounded-lg mb-4">
-              <h3 className="font-bold text-blue-900 mb-2">⚡ Sistem Perhitungan Per Hari (PP 35/2021):</h3>
+              <h3 className="font-bold text-blue-900 mb-2">⚡ Sistem Progresif:</h3>
               <ul className="text-sm text-blue-800 space-y-1">
-                <li>• <strong>Jam 1-8:</strong> Rate 200%</li>
-                <li>• <strong>Jam ke-9:</strong> Rate 300%</li>
-                <li>• <strong>Jam ke-10 dst:</strong> Rate 400%</li>
+                <li>• <strong>8 jam pertama:</strong> Rate 200%</li>
+                <li>• <strong>8 jam kedua:</strong> Rate 300%</li>
+                <li>• <strong>Jam ke-17 dst:</strong> Rate 400%</li>
               </ul>
             </div>
 
@@ -294,9 +279,9 @@ export default function OvertimeCalculator() {
                 />
                 <input
                   type="text"
-                  placeholder="Tanggal/Keterangan"
+                  placeholder="Tanggal (11/10)"
                   value={entry.date}
-                  onChange={(e) => updateEntry('holiday', idx, 'date', e.targe.value)}
+                  onChange={(e) => updateEntry('holiday', idx, 'date', e.target.value)}
                   className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
                 <button
@@ -314,17 +299,17 @@ export default function OvertimeCalculator() {
               </p>
               {holidayCalc.rate200 > 0 && (
                 <p className="text-sm text-blue-700">
-                  • {holidayCalc.rate200.toFixed(2)} jam @ 200% = {formatCurrency(holidayCalc.amount200)}
+                  • {holidayCalc.rate200} jam @ 200% = {formatCurrency(holidayCalc.rate200 * hourlyRate * 2)}
                 </p>
               )}
               {holidayCalc.rate300 > 0 && (
                 <p className="text-sm text-purple-700">
-                  • {holidayCalc.rate300.toFixed(2)} jam @ 300% = {formatCurrency(holidayCalc.amount300)}
+                  • {holidayCalc.rate300} jam @ 300% = {formatCurrency(holidayCalc.rate300 * hourlyRate * 3)}
                 </p>
               )}
               {holidayCalc.rate400 > 0 && (
                 <p className="text-sm text-rose-700">
-                  • {holidayCalc.rate400.toFixed(2)} jam @ 400% = {formatCurrency(holidayCalc.amount400)}
+                  • {holidayCalc.rate400} jam @ 400% = {formatCurrency(holidayCalc.rate400 * hourlyRate * 4)}
                 </p>
               )}
               <div className="border-t-2 border-gray-300 pt-2 mt-2">
@@ -339,72 +324,66 @@ export default function OvertimeCalculator() {
           <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 rounded-xl">
             <h3 className="text-2xl font-bold mb-4">Total Overtime</h3>
             <div className="space-y-2 text-lg">
-              <div className="flex justify-between">
-                <span>Weekday ({weekdayHours.toFixed(2)}h):</span>
-                <span>{formatCurrency(weekdayCalc.total)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Holiday ({holidayHours.toFixed(2)}h):</span>
-                <span>{formatCurrency(holidayCalc.total)}</span>
-              </div>
-
+              <p>Weekday (Progresif): {formatCurrency(weekdayCalc.total)}</p>
+              <p>Holiday (Progresif): {formatCurrency(holidayCalc.total)}</p>
               <div className="border-t-2 border-white/30 pt-3 mt-3">
-                <div className="flex justify-between text-xl">
-                  <p>Subtotal:</p>
-                  <p>{formatCurrency(calculatedTotal)}</p>
-                </div>
+                <p className="text-xl">
+                  Subtotal: {formatCurrency(calculatedTotal)}
+                </p>
                 {isCapped && (
-                  <p className="text-sm text-yellow-200 mt-2 text-right">
-                    ⚠️ Melebihi batas maksimal, dipotong ke {formatCurrency(maxCap)}
-                  </p>
+                  <>
+                    <p className="text-sm text-yellow-200 mt-2">
+                      ⚠️ Melebihi batas maksimal!
+                    </p>
+                    <p className="text-sm text-yellow-200">
+                      Dipotong ke: {formatCurrency(maxCap)}
+                    </p>
+                  </>
                 )}
-                <div className="flex justify-between text-3xl font-bold mt-3">
-                  <p>TOTAL:</p>
-                  <p>{formatCurrency(grandTotal)}</p>
-                </div>
+                <p className="text-3xl font-bold mt-3">
+                  TOTAL: {formatCurrency(grandTotal)}
+                </p>
               </div>
             </div>
           </div>
-                  </div>
-        
-                {/* Formula Reference */}
-                <div className="bg-white rounded-2xl shadow-xl p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">📋 Rumus Perhitungan</h3>
-                  <div className="space-y-3 text-sm text-gray-700">
-                    <p><strong>Tarif per Jam:</strong> Gaji Pokok ÷ 173 jam = {formatCurrency(hourlyRate)}</p>
-                    
-                    <div className="border-t pt-3 mt-3">
-                      <p className="font-bold mb-2">Weekday (Senin - Kamis) - Progresif Per Hari:</p>
-                      <p className="ml-4">• Jam pertama: × {formatCurrency(hourlyRate)} × 1.5 (150%)</p>
-                      <p className="ml-4">• Jam ke-2 dst: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
-                    </div>
-                    
-                    <div className="border-t pt-3 mt-3">
-                      <p className="font-bold mb-2">Weekend/Holiday (Jumat - Minggu & Libur) - Progresif Per Hari (PP 35/2021):</p>
-                      <p className="ml-4">• Jam 1-8: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
-                      <p className="ml-4">• Jam ke-9: × {formatCurrency(hourlyRate)} × 3 (300%)</p>
-                      <p className="ml-4">• Jam ke-10 dst: × {formatCurrency(hourlyRate)} × 4 (400%)</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 mt-4">
-                    <p className="text-sm text-yellow-800 mb-3">
-                      <strong>💡 Contoh Weekday:</strong> Kerja 4 jam di Senin:<br/>
-                      • 1 jam @ 150% = 1 × {formatCurrency(hourlyRate)} × 1.5 = {formatCurrency(hourlyRate * 1.5)}<br/>
-                      • 3 jam @ 200% = 3 × {formatCurrency(hourlyRate)} × 2 = {formatCurrency(hourlyRate * 2 * 3)}<br/>
-                      • <strong>Total = {formatCurrency(hourlyRate * 1.5 + hourlyRate * 2 * 3)}</strong>
-                    </p>
-                    <p className="text-sm text-yellow-800">
-                      <strong>💡 Contoh Weekend:</strong> Kerja 10 jam di Jumat:<br/>
-                      • 8 jam @ 200% = 8 × {formatCurrency(hourlyRate)} × 2<br/>
-                      • 1 jam @ 300% = 1 × {formatCurrency(hourlyRate)} × 3<br/>
-                      • 1 jam @ 400% = 1 × {formatCurrency(hourlyRate)} × 4<br/>
-                      • <strong>Total = {formatCurrency(hourlyRate * 2 * 8 + hourlyRate * 3 * 1 + hourlyRate * 4 * 1)}</strong>
-                    </p>
-                  </div>
-                </div>
-              </div>
+        </div>
+
+        {/* Formula Reference */}
+        <div className="bg-white rounded-2xl shadow-xl p-6">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">📋 Rumus Perhitungan</h3>
+          <div className="space-y-3 text-sm text-gray-700">
+            <p><strong>Tarif per Jam:</strong> Gaji Pokok ÷ 173 jam = {formatCurrency(hourlyRate)}</p>
+            
+            <div className="border-t pt-3 mt-3">
+              <p className="font-bold mb-2">Weekday (Senin - Kamis) - Progresif Per Hari:</p>
+              <p className="ml-4">• Jam pertama: × {formatCurrency(hourlyRate)} × 1.5 (150%)</p>
+              <p className="ml-4">• Jam ke-2 dst: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
             </div>
-          );
-        }
-        
+            
+            <div className="border-t pt-3 mt-3">
+              <p className="font-bold mb-2">Weekend/Holiday (Jumat - Minggu & Libur) - Progresif:</p>
+              <p className="ml-4">• Jam 1-8: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
+              <p className="ml-4">• Jam 9-16: × {formatCurrency(hourlyRate)} × 3 (300%)</p>
+              <p className="ml-4">• Jam 17+: × {formatCurrency(hourlyRate)} × 4 (400%)</p>
+            </div>
+          </div>
+          
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 mt-4">
+            <p className="text-sm text-yellow-800 mb-3">
+              <strong>💡 Contoh Weekday:</strong> Kerja 4 jam di Senin:<br/>
+              • 1 jam @ 150% = 1 × {formatCurrency(hourlyRate)} × 1.5 = {formatCurrency(hourlyRate * 1.5)}<br/>
+              • 3 jam @ 200% = 3 × {formatCurrency(hourlyRate)} × 2 = {formatCurrency(hourlyRate * 2 * 3)}<br/>
+              • <strong>Total = {formatCurrency(hourlyRate * 1.5 + hourlyRate * 2 * 3)}</strong>
+            </p>
+            <p className="text-sm text-yellow-800">
+              <strong>💡 Contoh Weekend:</strong> Kerja 18 jam di Jumat:<br/>
+              • 8 jam @ 200% = 8 × {formatCurrency(hourlyRate)} × 2<br/>
+              • 8 jam @ 300% = 8 × {formatCurrency(hourlyRate)} × 3<br/>
+              • 2 jam @ 400% = 2 × {formatCurrency(hourlyRate)} × 4
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
