@@ -134,7 +134,7 @@ export default function OvertimeCalculator() {
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="flex items-center gap-3 mb-6">
             <Calculator className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-3xl font-bold text-gray-800">Kalkulator Overtime Gabungan</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Kalkulator Overtime MII JMK</h1>
           </div>
 
           <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
@@ -142,7 +142,7 @@ export default function OvertimeCalculator() {
               <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-yellow-800">
                 <p className="font-bold mb-1">⚠️ Perhitungan Estimasi</p>
-                <p>Kalkulator ini mungkin tidak akurat. Silahkan  <code className="font-mono bg-yellow-200 px-1 rounded">tambah atau kurangi</code> jam lembur baik di Weekend atau Weekdays dengan <code className="font-mono bg-yellow-200 px-1 rounded">0,5 atau 1 jam.</code>. Selamat mencoba!.</p>
+                <p>Kalkulator ini mungkin tidak akurat. Silahkan  <code className="font-mono bg-yellow-200 px-1 rounded">tambah atau kurangi</code> jam lembur baik di Weekend atau Weekdays dengan <code className="font-mono bg-yellow-200 px-1 rounded">0,5 atau 1 jam.</code> Selamat mencoba!</p>
               </div>
             </div>
           </div>
