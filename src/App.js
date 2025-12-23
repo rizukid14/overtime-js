@@ -142,7 +142,7 @@ export default function OvertimeCalculator() {
               <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-yellow-800">
                 <p className="font-bold mb-1">⚠️ Perhitungan Estimasi</p>
-                <p>Kalkulator ini menggabungkan tampilan dari <code className="font-mono bg-yellow-200 px-1 rounded">old.js</code> dengan logika perhitungan dari <code className="font-mono bg-yellow-200 px-1 rounded">App.js</code>. Pastikan hasilnya sesuai ekspektasi Anda.</p>
+                <p>Kalkulator ini mungkin tidak akurat. Silahkan  <code className="font-mono bg-yellow-200 px-1 rounded">tambah atau kurangi</code> jam lembur baik di Weekend atau Weekdays dengan <code className="font-mono bg-yellow-200 px-1 rounded">0,5 atau 1 jam.</code>. Selamat mencoba!.</p>
               </div>
             </div>
           </div>
