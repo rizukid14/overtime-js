@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function OvertimeCalculator() {
-  const [basicSalary, setBasicSalary] = useState(900100200)
+  const [basicSalary, setBasicSalary] = useState()
   const [weekdayEntries, setWeekdayEntries] = useState([]);
   const [holidayEntries, setHolidayEntries] = useState([]);
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
+  const [showSalary, setShowSalary] = useState(false);
 
-  const hourlyRate = basicSalary / 173;
+  const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
 
   const addEntry = (type) => {
-    const newEntry = { hours: '', date: '' };
+    const newEntry = { hours: '' };
     if (type === 'weekday') {
       setWeekdayEntries([...weekdayEntries, newEntry]);
     } else {
@@ -113,8 +114,11 @@ export default function OvertimeCalculator() {
   const weekdayCalc = calculateWeekdayProgressive();
   const holidayCalc = calculateHolidayProgressive();
   const calculatedTotal = weekdayCalc.total + holidayCalc.total;
-  const grandTotal = useMaxCap ? Math.min(calculatedTotal, maxCap) : calculatedTotal;
-  const isCapped = useMaxCap && calculatedTotal > maxCap;
+  
+  const parsedMaxCap = parseFloat(maxCap) || 0;
+  const grandTotal = useMaxCap ? Math.min(calculatedTotal, parsedMaxCap) : calculatedTotal;
+  const finalTotal = (parseFloat(basicSalary) || 0) + grandTotal;
+  const isCapped = useMaxCap && calculatedTotal > parsedMaxCap;
 
   const weekdayHours = weekdayEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
   const holidayHours = holidayEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
@@ -151,14 +155,23 @@ export default function OvertimeCalculator() {
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Gaji Pokok (Basic Salary)
             </label>
-            <input
-              type="number"
-              value={basicSalary}
-              onChange={(e) => setBasicSalary(parseFloat(e.target.value) || 0)}
-              className="w-full px-4 py-2 border-2 border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
+            <div className="relative group">
+                          <input
+                            type={showSalary ? "number" : "password"}
+                            value={basicSalary}
+                            onChange={(e) => setBasicSalary(e.target.value)}
+                            className="w-full px-4 py-2 border-2 border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                            placeholder="Masukkan Gaji Pokok"
+                          />              <button
+                onClick={() => setShowSalary(!showSalary)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-indigo-400 hover:text-indigo-600 transition-colors"
+                title={showSalary ? "Sembunyikan Gaji" : "Tampilkan Gaji"}
+              >
+                {showSalary ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
             <p className="text-sm text-gray-600 mt-2">
-              Tarif per jam: <span className="font-semibold text-indigo-600">{formatCurrency(hourlyRate)}</span>
+              Tarif per jam: <span className={`font-semibold text-indigo-600 transition-all duration-300 ${!showSalary ? 'blur-sm select-none' : ''}`}>{formatCurrency(hourlyRate)}</span>
             </p>
           </div>
 
@@ -178,7 +191,7 @@ export default function OvertimeCalculator() {
               <input
                 type="number"
                 value={maxCap}
-                onChange={(e) => setMaxCap(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setMaxCap(e.target.value)}
                 className="w-full px-4 py-2 border-2 border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-500"
                 placeholder="Maksimal overtime per bulan"
               />
@@ -211,24 +224,21 @@ export default function OvertimeCalculator() {
             </div>
 
             {weekdayEntries.map((entry, idx) => (
-              <div key={idx} className="flex gap-3 mb-3">
-                <input
-                  type="number"
-                  placeholder="Jam"
-                  value={entry.hours}
-                  onChange={(e) => updateEntry('weekday', idx, 'hours', e.target.value)}
-                  className="w-24 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Tanggal/Keterangan"
-                  value={entry.date}
-                  onChange={(e) => updateEntry('weekday', idx, 'date', e.target.value)}
-                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500"
-                />
+              <div key={idx} className="flex gap-3 mb-3 items-center">
+                <div className="flex-1 flex items-center relative">
+                  <input
+                    type="number"
+                    placeholder="Masukkan Jumlah Jam"
+                    value={entry.hours}
+                    onChange={(e) => updateEntry('weekday', idx, 'hours', e.target.value)}
+                    className="w-full pl-3 pr-12 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 transition-all"
+                  />
+                  <span className="absolute right-3 text-sm font-semibold text-gray-400">Jam</span>
+                </div>
                 <button
                   onClick={() => removeEntry('weekday', idx)}
-                  className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                  className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                  title="Hapus baris"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -284,24 +294,21 @@ export default function OvertimeCalculator() {
             </div>
 
             {holidayEntries.map((entry, idx) => (
-              <div key={idx} className="flex gap-3 mb-3">
-                <input
-                  type="number"
-                  placeholder="Jam"
-                  value={entry.hours}
-                  onChange={(e) => updateEntry('holiday', idx, 'hours', e.target.value)}
-                  className="w-24 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Tanggal/Keterangan"
-                  value={entry.date}
-                  onChange={(e) => updateEntry('holiday', idx, 'date', e.targe.value)}
-                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+              <div key={idx} className="flex gap-3 mb-3 items-center">
+                <div className="flex-1 flex items-center relative">
+                  <input
+                    type="number"
+                    placeholder="Masukkan Jumlah Jam"
+                    value={entry.hours}
+                    onChange={(e) => updateEntry('holiday', idx, 'hours', e.target.value)}
+                    className="w-full pl-3 pr-12 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                  <span className="absolute right-3 text-sm font-semibold text-gray-400">Jam</span>
+                </div>
                 <button
                   onClick={() => removeEntry('holiday', idx)}
-                  className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                  className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                  title="Hapus baris"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -360,7 +367,12 @@ export default function OvertimeCalculator() {
                 )}
                 <div className="flex justify-between text-3xl font-bold mt-3">
                   <p>TOTAL:</p>
-                  <p>{formatCurrency(grandTotal)}</p>
+                  <p 
+                    className="blur-md hover:blur-none transition-all duration-300 cursor-help select-none"
+                    title="Hover untuk melihat total (Gaji + Lembur)"
+                  >
+                    {formatCurrency(finalTotal)}
+                  </p>
                 </div>
               </div>
             </div>
