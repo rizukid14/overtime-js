@@ -5,6 +5,7 @@ export default function OvertimeCalculator() {
   const [basicSalary, setBasicSalary] = useState()
   const [weekdayEntries, setWeekdayEntries] = useState([]);
   const [holidayEntries, setHolidayEntries] = useState([]);
+  const [additionalSalary, setAdditionalSalary] = useState('');
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
   const [showSalary, setShowSalary] = useState(false);
@@ -117,7 +118,7 @@ export default function OvertimeCalculator() {
   
   const parsedMaxCap = parseFloat(maxCap) || 0;
   const grandTotal = useMaxCap ? Math.min(calculatedTotal, parsedMaxCap) : calculatedTotal;
-  const finalTotal = (parseFloat(basicSalary) || 0) + grandTotal;
+  const finalTotal = (parseFloat(basicSalary) || 0) + (parseFloat(additionalSalary) || 0) + grandTotal;
   const isCapped = useMaxCap && calculatedTotal > parsedMaxCap;
 
   const weekdayHours = weekdayEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
@@ -342,6 +343,22 @@ export default function OvertimeCalculator() {
             </div>
           </div>
 
+          {/* Additional Salary Section */}
+          <div className="mb-6 p-4 bg-teal-50 rounded-lg border-2 border-teal-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Tambahan Gaji/Tunjangan (jika ada)
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                value={additionalSalary}
+                onChange={(e) => setAdditionalSalary(e.target.value)}
+                className="w-full px-4 py-2 border-2 border-teal-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                placeholder="Masukkan nominal tambahan (misal: Tunjangan)"
+              />
+            </div>
+          </div>
+
           {/* Grand Total */}
           <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 rounded-xl">
             <h3 className="text-2xl font-bold mb-4">Total Overtime</h3>
@@ -355,17 +372,27 @@ export default function OvertimeCalculator() {
                 <span>{formatCurrency(holidayCalc.total)}</span>
               </div>
 
-              <div className="border-t-2 border-white/30 pt-3 mt-3">
+              <div className="border-t-2 border-white/30 pt-3 mt-3 space-y-2">
                 <div className="flex justify-between text-xl">
-                  <p>Subtotal:</p>
+                  <p>Subtotal Lembur:</p>
                   <p>{formatCurrency(calculatedTotal)}</p>
                 </div>
+
+                {parseFloat(additionalSalary) > 0 && (
+                  <div className="flex justify-between text-xl">
+                    <span>Tambahan:</span>
+                    <span>{formatCurrency(parseFloat(additionalSalary))}</span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="border-t-2 border-white/30 pt-3 mt-3">
                 {isCapped && (
-                  <p className="text-sm text-yellow-200 mt-2 text-right">
+                  <p className="text-sm text-yellow-200 mb-2 text-right">
                     ⚠️ Melebihi batas maksimal, dipotong ke {formatCurrency(maxCap)}
                   </p>
                 )}
-                <div className="flex justify-between text-3xl font-bold mt-3">
+                <div className="flex justify-between text-3xl font-bold">
                   <p>TOTAL:</p>
                   <p 
                     className="blur-md hover:blur-none transition-all duration-300 cursor-help select-none"
