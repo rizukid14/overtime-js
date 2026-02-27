@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun } from 'lucide-react';
+import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X } from 'lucide-react';
+import { TER_CATEGORIES } from './terData';
 
 export default function OvertimeCalculator() {
   const [basicSalary, setBasicSalary] = useState()
@@ -9,7 +10,14 @@ export default function OvertimeCalculator() {
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
   const [showSalary, setShowSalary] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+  
+  // Tax Modal State
+  const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
+  const [ptkpCategory, setPtkpCategory] = useState('A');
 
   useEffect(() => {
     if (darkMode) {
@@ -17,6 +25,7 @@ export default function OvertimeCalculator() {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
@@ -132,6 +141,42 @@ export default function OvertimeCalculator() {
 
   const weekdayHours = weekdayEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
   const holidayHours = holidayEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
+
+  // Constants for BPJS
+  const RATES = {
+    emp: { kes: 0.01, jht: 0.02, jp: 0.01 }, // Employee cuts
+    co: { kes: 0.04, jkk: 0.0024, jkm: 0.003 } // Company paid (affects tax base)
+  };
+
+  // 1. BPJS Base is usually just Basic Salary for these types of allowances
+  const bpjsBase = (parseFloat(basicSalary) || 0);
+  
+  // 2. Employee Deductions (Potongan Gaji)
+  const bpjsKesEmp = Math.min(bpjsBase, 12000000) * RATES.emp.kes;
+  const bpjsJHTEmp = bpjsBase * RATES.emp.jht;
+  const bpjsJPEmp = Math.min(bpjsBase, 10047900) * RATES.emp.jp;
+  const totalBpjsEmp = bpjsKesEmp + bpjsJHTEmp + bpjsJPEmp;
+
+  // 3. Company Contributions (Used for Tax Base)
+  const bpjsKesCo = Math.min(bpjsBase, 12000000) * RATES.co.kes;
+  const bpjsJKKCo = bpjsBase * RATES.co.jkk;
+  const bpjsJKMCo = bpjsBase * RATES.co.jkm;
+  const totalBpjsCo = bpjsKesCo + bpjsJKKCo + bpjsJKMCo;
+
+  // 4. Tax Calculation (Base = Gross + Company BPJS)
+  const taxableGross = finalTotal + totalBpjsCo;
+  
+  const getTerRate = (income) => {
+    const category = TER_CATEGORIES[ptkpCategory];
+    const bracket = category.brackets.find(b => income >= b.min && (b.max === null || income <= b.max || b.max === Infinity));
+    return bracket ? bracket.rate : 0;
+  };
+
+  const terRate = getTerRate(taxableGross);
+  const taxAmount = taxableGross * terRate;
+
+  // 5. Net Salary (Gross - Tax - Employee BPJS)
+  const netSalary = finalTotal - taxAmount - totalBpjsEmp;
 
   const formatCurrency = (num) => {
     return new Intl.NumberFormat('id-ID', {
@@ -420,6 +465,14 @@ export default function OvertimeCalculator() {
                   </p>
                 </div>
               </div>
+
+              <button
+                onClick={() => setIsTaxModalOpen(true)}
+                className="w-full mt-4 py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 border border-white/30 backdrop-blur-sm"
+              >
+                <Calculator className="w-5 h-5" />
+                Lihat Estimasi Gaji Bersih (PPh 21)
+              </button>
             </div>
           </div>
                   </div>
@@ -459,6 +512,149 @@ export default function OvertimeCalculator() {
                       • <strong>Total = {formatCurrency(hourlyRate * 2 * 8 + hourlyRate * 3 * 1 + hourlyRate * 4 * 1)}</strong>
                     </p>
                   </div>
+                </div>
+              </div>
+
+              <TaxModal 
+                isOpen={isTaxModalOpen}
+                onClose={() => setIsTaxModalOpen(false)}
+                ptkpCategory={ptkpCategory}
+                setPtkpCategory={setPtkpCategory}
+                finalTotal={finalTotal}
+                taxableGross={taxableGross}
+                terRate={terRate}
+                taxAmount={taxAmount}
+                bpjs={{ kes: bpjsKesEmp, jht: bpjsJHTEmp, jp: bpjsJPEmp, total: totalBpjsEmp }}
+                netSalary={netSalary}
+                formatCurrency={formatCurrency}
+              />
+            </div>
+          );
+        }
+
+        function TaxModal({ isOpen, onClose, ptkpCategory, setPtkpCategory, finalTotal, taxableGross, terRate, taxAmount, bpjs, netSalary, formatCurrency }) {
+          const [showAmounts, setShowAmounts] = useState(false);
+
+          if (!isOpen) return null;
+
+          return (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+              onClick={(e) => e.target === e.currentTarget && onClose()}
+            >
+              <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-zoom-in max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-4 border-b dark:border-slate-700">
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <Calculator className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    Estimasi Gaji Bersih
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAmounts(!showAmounts)}
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500 dark:text-gray-400"
+                      title={showAmounts ? "Sembunyikan Nominal" : "Tampilkan Nominal"}
+                    >
+                      {showAmounts ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors">
+                      <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-4 overflow-y-auto">
+                  {/* Category Selection */}
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Kategori PTKP
+                      </label>
+                      <select 
+                        value={ptkpCategory}
+                        onChange={(e) => setPtkpCategory(e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white outline-none transition-all"
+                      >
+                        {Object.keys(TER_CATEGORIES).map(cat => (
+                          <option key={cat} value={cat}>{TER_CATEGORIES[cat].label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                      <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold text-center">TER</p>
+                      <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{(terRate * 100).toFixed(2)}%</p>
+                    </div>
+                  </div>
+
+                  {/* Calculation Breakdown */}
+                  <div className="bg-gray-50 dark:bg-slate-900/50 p-3 rounded-xl space-y-2">
+                    <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <span>Total Gaji Bruto (Gross):</span>
+                      <span className={`font-semibold transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        {formatCurrency(finalTotal)}
+                      </span>
+                    </div>
+                    
+                    <div className="pt-2 border-t dark:border-slate-700 space-y-1.5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Potongan Wajib:</p>
+                      
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 group relative">
+                        <span className="flex items-center gap-1 border-b border-dotted border-gray-400 cursor-help" title={`Dihitung dari Bruto + Iuran BPJS Perusahaan (${formatCurrency(taxableGross)})`}>
+                          PPh 21:
+                        </span>
+                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                          -{formatCurrency(taxAmount)}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <span>BPJS Kesehatan (1%):</span>
+                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                          -{formatCurrency(bpjs.kes)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <span>BPJS TK - JHT (2%):</span>
+                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                          -{formatCurrency(bpjs.jht)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <span>BPJS TK - JP (1%):</span>
+                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                          -{formatCurrency(bpjs.jp)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between text-xs font-bold text-gray-700 dark:text-gray-300 border-t dark:border-slate-700 pt-1.5">
+                      <span>Total Potongan:</span>
+                      <span className={`transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        {formatCurrency(taxAmount + bpjs.total)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Net Result */}
+                  <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-4 rounded-xl text-white text-center shadow-lg shadow-green-500/20 relative overflow-hidden">
+                    <p className="text-xs font-medium opacity-90 mb-1">Take Home Pay (Estimasi)</p>
+                    <p className={`text-2xl font-bold transition-all duration-500 ${!showAmounts ? 'blur-md scale-95 opacity-50 select-none' : ''}`}>
+                      {formatCurrency(netSalary)}
+                    </p>
+                  </div>
+
+                  <p className="text-[9px] text-gray-400 dark:text-gray-500 text-center leading-tight">
+                    *PPh 21 TER mengikuti standar Dirjen Pajak 2024 (Bruto + Iuran Perusahaan).<br/>
+                    *BPJS dihitung dari Gaji Pokok saja.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-gray-50 dark:bg-slate-900/80 text-center border-t dark:border-slate-700">
+                  <button 
+                    onClick={onClose}
+                    className="px-6 py-1.5 text-sm bg-gray-800 dark:bg-slate-700 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors font-semibold"
+                  >
+                    Tutup
+                  </button>
                 </div>
               </div>
             </div>
