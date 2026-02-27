@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X, Info } from 'lucide-react';
+import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X } from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
 
 export default function OvertimeCalculator() {
