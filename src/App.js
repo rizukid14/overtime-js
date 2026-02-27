@@ -10,7 +10,10 @@ export default function OvertimeCalculator() {
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
   const [showSalary, setShowSalary] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved !== null ? JSON.parse(saved) : false;
+  });
   
   // Tax Modal State
   const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
@@ -22,6 +25,7 @@ export default function OvertimeCalculator() {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
