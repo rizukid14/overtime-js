@@ -1,8 +1,10 @@
+// --- 1. IMPORTS (Getting our Tools) ---
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X } from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
 
 export default function OvertimeCalculator() {
+  // --- 2. STATE & MEMORY (The App's Memory Boxes) ---
   const [basicSalary, setBasicSalary] = useState()
   const [weekdayEntries, setWeekdayEntries] = useState([]);
   const [holidayEntries, setHolidayEntries] = useState([]);
@@ -44,6 +46,7 @@ export default function OvertimeCalculator() {
 
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
 
+  // --- 3. MATH & LOGIC (The Brain of the App) ---
   const addEntry = (type) => {
     const newEntry = { hours: '' };
     if (type === 'weekday') {
@@ -201,8 +204,9 @@ export default function OvertimeCalculator() {
     }).format(num);
   };
 
+  // --- 4. VISUALS & JSX (The Blueprint for the Screen) ---
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 p-4 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 p-4 transition-colors duration-200">
       <div className="max-w-4xl mx-auto">
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 mb-6 transition-colors duration-300 border border-transparent dark:border-slate-700">
           <div className="flex items-center justify-between mb-6">
@@ -546,6 +550,7 @@ export default function OvertimeCalculator() {
           );
         }
 
+        // --- 5. TAX MODAL COMPONENT (The Calculation Popup) ---
         function TaxModal({ isOpen, onClose, ptkpCategory, setPtkpCategory, finalTotal, taxableGross, terRate, taxAmount, bpjs, netSalary, formatCurrency }) {
           const [showAmounts, setShowAmounts] = useState(false);
 
