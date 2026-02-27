@@ -28,6 +28,20 @@ export default function OvertimeCalculator() {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
+  // Warn before closing tab if data exists
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      const hasData = basicSalary || weekdayEntries.length > 0 || holidayEntries.length > 0 || additionalSalary;
+      if (hasData) {
+        e.preventDefault();
+        e.returnValue = ''; // Standard way to trigger browser confirmation
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [basicSalary, weekdayEntries, holidayEntries, additionalSalary]);
+
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
 
   const addEntry = (type) => {
