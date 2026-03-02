@@ -27,6 +27,17 @@
     <title>Overtime Jamkrindo MII</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // Apply theme immediately to prevent flashing
+      try {
+        const darkMode = localStorage.getItem('darkMode');
+        if (darkMode === 'true') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    </script>
+    <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {

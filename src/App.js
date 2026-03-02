@@ -1,7 +1,8 @@
 // --- 1. IMPORTS (Getting our Tools) ---
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X } from 'lucide-react';
+import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X, Download } from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
+import * as XLSX from 'xlsx';
 
 export default function OvertimeCalculator() {
   // --- 2. STATE & MEMORY (The App's Memory Boxes) ---
@@ -202,6 +203,60 @@ export default function OvertimeCalculator() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(num);
+  };
+
+  const downloadExcel = () => {
+    const wb = XLSX.utils.book_new();
+    
+    // Summary Data
+    const summaryData = [
+      ["RINGKASAN ESTIMASI GAJI & LEMBUR", ""],
+      ["Tanggal", new Date().toLocaleDateString('id-ID')],
+      ["", ""],
+      ["1. PENDAPATAN", ""],
+      ["Gaji Pokok", parseFloat(basicSalary) || 0],
+      ["Tambahan Gaji", parseFloat(additionalSalary) || 0],
+      ["Total Lembur (Weekday)", weekdayCalc.total],
+      ["Total Lembur (Holiday)", holidayCalc.total],
+      ["Lembur (Kalkulasi)", calculatedTotal],
+      ["Batas Maksimal Overtime", useMaxCap ? parseFloat(maxCap) : "Tidak Ada"],
+      ["Lembur (Setelah Batas)", grandTotal],
+      ["TOTAL BRUTO", finalTotal],
+      ["", ""],
+      ["2. POTONGAN (ESTIMASI)", ""],
+      ["Kategori TER", TER_CATEGORIES[ptkpCategory].label],
+      ["Tarif TER (%)", (terRate * 100).toFixed(2)],
+      ["PPh 21 (TER)", taxAmount],
+      ["BPJS Kesehatan (1%)", bpjsKesEmp],
+      ["BPJS TK - JHT (2%)", bpjsJHTEmp],
+      ["BPJS TK - JP (1%)", bpjsJPEmp],
+      ["TOTAL POTONGAN", (taxAmount + totalBpjsEmp)],
+      ["", ""],
+      ["3. ESTIMASI BERSIH", ""],
+      ["TAKE HOME PAY", netSalary]
+    ];
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    wsSummary['!cols'] = [{ wch: 30 }, { wch: 20 }];
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan Gaji");
+
+    // Add Detailed Overtime if needed
+    const detailedData = [["RINCIAN JAM LEMBUR"]];
+    detailedData.push(["Tipe", "Jam"]);
+    weekdayEntries.forEach((e, i) => {
+      if (e.hours) detailedData.push([`Weekday Entry ${i+1}`, parseFloat(e.hours)]);
+    });
+    holidayEntries.forEach((e, i) => {
+      if (e.hours) detailedData.push([`Holiday Entry ${i+1}`, parseFloat(e.hours)]);
+    });
+
+    if (detailedData.length > 2) {
+      const wsDetail = XLSX.utils.aoa_to_sheet(detailedData);
+      XLSX.utils.book_append_sheet(wb, wsDetail, "Rincian Jam");
+    }
+
+    XLSX.writeFile(wb, `Kalkulasi_Gaji_${new Date().getTime()}.xlsx`);
   };
 
   // --- 4. VISUALS & JSX (The Blueprint for the Screen) ---
@@ -536,6 +591,7 @@ export default function OvertimeCalculator() {
               <TaxModal 
                 isOpen={isTaxModalOpen}
                 onClose={() => setIsTaxModalOpen(false)}
+                onDownload={downloadExcel}
                 ptkpCategory={ptkpCategory}
                 setPtkpCategory={setPtkpCategory}
                 finalTotal={finalTotal}
@@ -551,7 +607,7 @@ export default function OvertimeCalculator() {
         }
 
         // --- 5. TAX MODAL COMPONENT (The Calculation Popup) ---
-        function TaxModal({ isOpen, onClose, ptkpCategory, setPtkpCategory, finalTotal, taxableGross, terRate, taxAmount, bpjs, netSalary, formatCurrency }) {
+        function TaxModal({ isOpen, onClose, onDownload, ptkpCategory, setPtkpCategory, finalTotal, taxableGross, terRate, taxAmount, bpjs, netSalary, formatCurrency }) {
           const [showAmounts, setShowAmounts] = useState(false);
 
           if (!isOpen) return null;
@@ -620,26 +676,26 @@ export default function OvertimeCalculator() {
                         <span className="flex items-center gap-1 border-b border-dotted border-gray-400 cursor-help" title={`Dihitung dari Bruto + Iuran BPJS Perusahaan (${formatCurrency(taxableGross)})`}>
                           PPh 21:
                         </span>
-                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        <span className="font-semibold text-red-500">
                           -{formatCurrency(taxAmount)}
                         </span>
                       </div>
 
                       <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                         <span>BPJS Kesehatan (1%):</span>
-                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        <span className="font-semibold text-red-500">
                           -{formatCurrency(bpjs.kes)}
                         </span>
                       </div>
                       <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                         <span>BPJS TK - JHT (2%):</span>
-                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        <span className="font-semibold text-red-500">
                           -{formatCurrency(bpjs.jht)}
                         </span>
                       </div>
                       <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
                         <span>BPJS TK - JP (1%):</span>
-                        <span className={`font-semibold text-red-500 transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                        <span className="font-semibold text-red-500">
                           -{formatCurrency(bpjs.jp)}
                         </span>
                       </div>
@@ -647,7 +703,7 @@ export default function OvertimeCalculator() {
 
                     <div className="flex justify-between text-xs font-bold text-gray-700 dark:text-gray-300 border-t dark:border-slate-700 pt-1.5">
                       <span>Total Potongan:</span>
-                      <span className={`transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
+                      <span className="font-semibold">
                         {formatCurrency(taxAmount + bpjs.total)}
                       </span>
                     </div>
@@ -667,10 +723,17 @@ export default function OvertimeCalculator() {
                   </p>
                 </div>
 
-                <div className="p-3 bg-gray-50 dark:bg-slate-900/80 text-center border-t dark:border-slate-700">
+                <div className="p-3 bg-gray-50 dark:bg-slate-900/80 flex gap-2 border-t dark:border-slate-700">
+                  <button 
+                    onClick={onDownload}
+                    className="flex-1 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Excel
+                  </button>
                   <button 
                     onClick={onClose}
-                    className="px-6 py-1.5 text-sm bg-gray-800 dark:bg-slate-700 text-white rounded-lg hover:bg-gray-900 dark:hover:bg-slate-600 transition-colors font-semibold"
+                    className="px-6 py-2 text-sm bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors font-semibold"
                   >
                     Tutup
                   </button>
