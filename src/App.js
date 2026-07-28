@@ -1,27 +1,55 @@
-// --- 1. IMPORTS (Getting our Tools) ---
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Calculator, AlertCircle, Eye, EyeOff, Moon, Sun, X, Download } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Calculator,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Moon,
+  Sun,
+  RotateCcw,
+  TrendingUp,
+  ShieldCheck,
+  Clock,
+  Briefcase,
+  HelpCircle,
+  FileSpreadsheet
+} from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
 import * as XLSX from 'xlsx';
 
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/card';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { Badge } from './components/ui/badge';
+import { Switch } from './components/ui/switch';
+
 export default function OvertimeCalculator() {
-  // --- 2. STATE & MEMORY (The App's Memory Boxes) ---
-  const [basicSalary, setBasicSalary] = useState()
+  // --- STATE ---
+  const [basicSalary, setBasicSalary] = useState(''); // Default null / empty
   const [weekdayEntries, setWeekdayEntries] = useState([]);
   const [holidayEntries, setHolidayEntries] = useState([]);
   const [additionalSalary, setAdditionalSalary] = useState('');
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
-  const [showSalary, setShowSalary] = useState(false);
+
+  // Fully Decoupled & Independent Privacy States:
+  const [showBasicSalary, setShowBasicSalary] = useState(true); // Independent toggle for Gaji Pokok input
+  const [showGrossPrivacy, setShowGrossPrivacy] = useState(false); // Independent toggle ONLY for Total Bruto (Gaji + Lembur)
+  const [showTaxCardPrivacy, setShowTaxCardPrivacy] = useState(false); // Independent toggle ONLY for Estimasi PPh 21 & Take Home Pay card
+
+  const [showTaxBreakdown, setShowTaxBreakdown] = useState(false); // Default collapsed
+  const [showFormula, setShowFormula] = useState(false); // Collapsible formula reference state
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved !== null ? JSON.parse(saved) : false;
   });
-  
-  // Tax Modal State
-  const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
+
+  // Tax & PTKP Category State
   const [ptkpCategory, setPtkpCategory] = useState('A');
 
+  // Dark Mode Sync
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -34,10 +62,10 @@ export default function OvertimeCalculator() {
   // Warn before closing tab if data exists
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      const hasData = basicSalary || weekdayEntries.length > 0 || holidayEntries.length > 0 || additionalSalary;
+      const hasData = Boolean(basicSalary) || weekdayEntries.length > 0 || holidayEntries.length > 0 || additionalSalary;
       if (hasData) {
         e.preventDefault();
-        e.returnValue = ''; // Standard way to trigger browser confirmation
+        e.returnValue = '';
       }
     };
 
@@ -45,11 +73,19 @@ export default function OvertimeCalculator() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [basicSalary, weekdayEntries, holidayEntries, additionalSalary]);
 
+  // Reset function
+  const handleReset = () => {
+    setBasicSalary('');
+    setWeekdayEntries([]);
+    setHolidayEntries([]);
+    setAdditionalSalary('');
+  };
+
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
 
-  // --- 3. MATH & LOGIC (The Brain of the App) ---
-  const addEntry = (type) => {
-    const newEntry = { hours: '' };
+  // --- ENTRY MANAGERS ---
+  const addEntry = (type, defaultHours = '') => {
+    const newEntry = { hours: String(defaultHours) };
     if (type === 'weekday') {
       setWeekdayEntries([...weekdayEntries, newEntry]);
     } else {
@@ -65,23 +101,43 @@ export default function OvertimeCalculator() {
     }
   };
 
-  const updateEntry = (type, index, field, value) => {
+  const updateEntry = (type, index, value) => {
+    // Sanitize to max 2 digits / valid hours (0-24)
+    let sanitized = value.replace(/[^0-9.]/g, '');
+    if (sanitized.length > 4) sanitized = sanitized.slice(0, 4);
+    const numVal = parseFloat(sanitized);
+    if (numVal > 24) sanitized = '24';
+
     if (type === 'weekday') {
       const updated = [...weekdayEntries];
-      updated[index][field] = value;
+      updated[index].hours = sanitized;
       setWeekdayEntries(updated);
     } else {
       const updated = [...holidayEntries];
-      updated[index][field] = value;
+      updated[index].hours = sanitized;
       setHolidayEntries(updated);
     }
   };
 
-  // Logic from App.js
+  // Helper to format input string with thousand dots e.g. 1000000 -> 1.000.000
+  const formatNumberWithDots = (val) => {
+    if (!val) return '';
+    const clean = String(val).replace(/\D/g, '');
+    if (!clean) return '';
+    return new Intl.NumberFormat('id-ID').format(clean);
+  };
+
+  // Handle salary input change with dot formatting
+  const handleSalaryChange = (e) => {
+    const rawDigits = e.target.value.replace(/\D/g, '');
+    setBasicSalary(rawDigits);
+  };
+
+  // --- MATH & LOGIC ---
   const calculateWeekdayProgressive = () => {
     let total150 = 0, total200 = 0;
     let hours150 = 0, hours200 = 0;
-    
+
     weekdayEntries.forEach(entry => {
       const hours = parseFloat(entry.hours) || 0;
       if (hours === 0) return;
@@ -99,16 +155,15 @@ export default function OvertimeCalculator() {
       }
     });
 
-    return { 
+    return {
       total: total150 + total200,
-      rate150: hours150, 
+      rate150: hours150,
       rate200: hours200,
       amount150: total150,
       amount200: total200
     };
   };
-  
-  // Logic from App.js
+
   const calculateHolidayProgressive = () => {
     let total200 = 0, total300 = 0, total400 = 0;
     let sumH200 = 0, sumH300 = 0, sumH400 = 0;
@@ -136,7 +191,7 @@ export default function OvertimeCalculator() {
         sumH400 += h400;
       }
     });
-    
+
     return {
       total: total200 + total300 + total400,
       rate200: sumH200,
@@ -151,7 +206,7 @@ export default function OvertimeCalculator() {
   const weekdayCalc = calculateWeekdayProgressive();
   const holidayCalc = calculateHolidayProgressive();
   const calculatedTotal = weekdayCalc.total + holidayCalc.total;
-  
+
   const parsedMaxCap = parseFloat(maxCap) || 0;
   const grandTotal = useMaxCap ? Math.min(calculatedTotal, parsedMaxCap) : calculatedTotal;
   const finalTotal = (parseFloat(basicSalary) || 0) + (parseFloat(additionalSalary) || 0) + grandTotal;
@@ -162,28 +217,24 @@ export default function OvertimeCalculator() {
 
   // Constants for BPJS
   const RATES = {
-    emp: { kes: 0.01, jht: 0.02, jp: 0.01 }, // Employee cuts
-    co: { kes: 0.04, jkk: 0.0024, jkm: 0.003 } // Company paid (affects tax base)
+    emp: { kes: 0.01, jht: 0.02, jp: 0.01 },
+    co: { kes: 0.04, jkk: 0.0024, jkm: 0.003 }
   };
 
-  // 1. BPJS Base is usually just Basic Salary for these types of allowances
   const bpjsBase = (parseFloat(basicSalary) || 0);
-  
-  // 2. Employee Deductions (Potongan Gaji)
+
   const bpjsKesEmp = Math.min(bpjsBase, 12000000) * RATES.emp.kes;
   const bpjsJHTEmp = bpjsBase * RATES.emp.jht;
   const bpjsJPEmp = Math.min(bpjsBase, 10047900) * RATES.emp.jp;
   const totalBpjsEmp = bpjsKesEmp + bpjsJHTEmp + bpjsJPEmp;
 
-  // 3. Company Contributions (Used for Tax Base)
   const bpjsKesCo = Math.min(bpjsBase, 12000000) * RATES.co.kes;
   const bpjsJKKCo = bpjsBase * RATES.co.jkk;
   const bpjsJKMCo = bpjsBase * RATES.co.jkm;
   const totalBpjsCo = bpjsKesCo + bpjsJKKCo + bpjsJKMCo;
 
-  // 4. Tax Calculation (Base = Gross + Company BPJS)
   const taxableGross = finalTotal + totalBpjsCo;
-  
+
   const getTerRate = (income) => {
     const category = TER_CATEGORIES[ptkpCategory];
     const bracket = category.brackets.find(b => income >= b.min && (b.max === null || income <= b.max || b.max === Infinity));
@@ -192,8 +243,6 @@ export default function OvertimeCalculator() {
 
   const terRate = getTerRate(taxableGross);
   const taxAmount = taxableGross * terRate;
-
-  // 5. Net Salary (Gross - Tax - Employee BPJS)
   const netSalary = finalTotal - taxAmount - totalBpjsEmp;
 
   const formatCurrency = (num) => {
@@ -202,13 +251,44 @@ export default function OvertimeCalculator() {
       currency: 'IDR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(num);
+    }).format(num || 0);
   };
 
+  // Independent Privacy Helpers
+  const renderGrossAmount = (amount, maskText = 'Rp •••••••••') => {
+    if (showGrossPrivacy) {
+      return formatCurrency(amount);
+    }
+    return (
+      <span
+        onClick={(e) => { e.stopPropagation(); setShowGrossPrivacy(true); }}
+        className="inline-block font-mono tracking-widest text-slate-300 dark:text-slate-500 filter blur-[2.5px] select-none cursor-pointer hover:blur-none transition-all duration-200"
+        title="Klik untuk membuka Total Bruto"
+      >
+        {maskText}
+      </span>
+    );
+  };
+
+  const renderTaxCardAmount = (amount, maskText = 'Rp •••••••••') => {
+    if (showTaxCardPrivacy) {
+      return formatCurrency(amount);
+    }
+    return (
+      <span
+        onClick={(e) => { e.stopPropagation(); setShowTaxCardPrivacy(true); }}
+        className="inline-block font-mono tracking-widest text-slate-300 dark:text-slate-500 filter blur-[2.5px] select-none cursor-pointer hover:blur-none transition-all duration-200"
+        title="Klik untuk membuka nominal PPh 21 / Take Home Pay"
+      >
+        {maskText}
+      </span>
+    );
+  };
+
+  // --- EXCEL DOWNLOAD ---
   const downloadExcel = () => {
     const wb = XLSX.utils.book_new();
-    
-    // Summary Data
+
     const summaryData = [
       ["RINGKASAN ESTIMASI GAJI & LEMBUR", ""],
       ["Tanggal", new Date().toLocaleDateString('id-ID')],
@@ -238,17 +318,15 @@ export default function OvertimeCalculator() {
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
     wsSummary['!cols'] = [{ wch: 30 }, { wch: 20 }];
-
     XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan Gaji");
 
-    // Add Detailed Overtime if needed
     const detailedData = [["RINCIAN JAM LEMBUR"]];
     detailedData.push(["Tipe", "Jam"]);
     weekdayEntries.forEach((e, i) => {
-      if (e.hours) detailedData.push([`Weekday Entry ${i+1}`, parseFloat(e.hours)]);
+      if (e.hours) detailedData.push([`Weekday Entry ${i + 1}`, parseFloat(e.hours)]);
     });
     holidayEntries.forEach((e, i) => {
-      if (e.hours) detailedData.push([`Holiday Entry ${i+1}`, parseFloat(e.hours)]);
+      if (e.hours) detailedData.push([`Holiday Entry ${i + 1}`, parseFloat(e.hours)]);
     });
 
     if (detailedData.length > 2) {
@@ -259,487 +337,618 @@ export default function OvertimeCalculator() {
     XLSX.writeFile(wb, `Kalkulasi_Gaji_${new Date().getTime()}.xlsx`);
   };
 
-  // --- 4. VISUALS & JSX (The Blueprint for the Screen) ---
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800 p-4 transition-colors duration-200">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 mb-6 transition-colors duration-300 border border-transparent dark:border-slate-700">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Calculator className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-              <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Kalkulator Overtime MII JMK</h1>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      {/* Top Header */}
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 md:px-8 py-3.5 shadow-sm">
+        <div className="max-w-[1700px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-indigo-600 dark:bg-indigo-500 text-white shadow-md shadow-indigo-500/20">
+              <Calculator className="w-6 h-6" />
             </div>
-            <button
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  Kalkulator Overtime & TER Gaji
+                </h1>
+                <Badge variant="default" className="hidden sm:inline-flex">MII JMK</Badge>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Hitung overtime progresif (PP 35/2021) & estimasi PPh 21 TER (Dirjen Pajak)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+            <Button variant="outline" size="sm" onClick={handleReset} title="Reset semua data">
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+              Reset
+            </Button>
+            <Button variant="emerald" size="sm" onClick={downloadExcel} title="Download Laporan Excel">
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+              Export Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
               onClick={() => setDarkMode(!darkMode)}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600 transition-all duration-300"
-              title={darkMode ? "Aktifkan Light Mode" : "Aktifkan Dark Mode"}
+              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
-              {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
-            </button>
+              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            </Button>
           </div>
+        </div>
+      </header>
 
-          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-300 dark:border-yellow-900/50 rounded-lg">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                <p className="font-bold mb-1">⚠️ Perhitungan Estimasi</p>
-                <p>Kalkulator ini mungkin tidak akurat. Silahkan  <code className="font-mono bg-yellow-200 dark:bg-yellow-800 px-1 rounded">tambah atau kurangi</code> jam lembur baik di Weekend atau Weekdays dengan <code className="font-mono bg-yellow-200 dark:bg-yellow-800 px-1 rounded">0,5 atau 1 jam.</code> Selamat mencoba!</p>
-              </div>
-            </div>
+      {/* Main Fullscreen Dashboard Workspace */}
+      <main className="max-w-[1700px] mx-auto p-4 md:p-6 lg:p-8">
+        {/* Info Banner */}
+        <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs md:text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
+            <span className="font-bold">⚠️ Perhitungan Estimasi:</span> Silahkan sesuaikan jam lembur di Weekend / Weekday dalam kelipatan 0,5 atau 1 jam untuk hasil optimal.
           </div>
+        </div>
 
-          <div className="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-indigo-300 mb-2">
-              Gaji Pokok (Basic Salary)
-            </label>
-            <div className="relative group">
-                          <input
-                            type={showSalary ? "number" : "password"}
-                            value={basicSalary}
-                            onChange={(e) => setBasicSalary(e.target.value)}
-                            className="w-full px-4 py-2 bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900/50 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                            placeholder="Masukkan Gaji Pokok"
-                          />              <button
-                onClick={() => setShowSalary(!showSalary)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-indigo-400 hover:text-indigo-600 transition-colors"
-                title={showSalary ? "Sembunyikan Gaji" : "Tampilkan Gaji"}
-              >
-                {showSalary ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-              Tarif per jam: <span className={`font-semibold text-indigo-600 dark:text-indigo-400 transition-all duration-300 ${!showSalary ? 'blur-sm select-none' : ''}`}>{formatCurrency(hourlyRate)}</span>
-            </p>
-          </div>
+        {/* 12-Column Responsive Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-          <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border-2 border-orange-200 dark:border-orange-900/50">
-            <div className="flex items-center gap-3 mb-3">
-              <input
-                type="checkbox"
-                checked={useMaxCap}
-                onChange={(e) => setUseMaxCap(e.target.checked)}
-                className="w-5 h-5 text-orange-600 rounded focus:ring-2 focus:ring-orange-500"
-              />
-              <label className="text-sm font-semibold text-gray-700 dark:text-orange-300">
-                Gunakan Batas Maksimal Overtime
-              </label>
-            </div>
-            {useMaxCap && (
-              <input
-                type="number"
-                value={maxCap}
-                onChange={(e) => setMaxCap(e.target.value)}
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border-2 border-orange-200 dark:border-orange-900/50 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500"
-                placeholder="Maksimal overtime per bulan"
-              />
-            )}
-          </div>
+          {/* LEFT COLUMN: Input Forms & Overtime Entry Grids (7 Cols) */}
+          <div className="lg:col-span-7 space-y-6">
 
-          {/* Weekday Section */}
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-3">
-              <div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                  Overtime Weekday
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Senin - Kamis</p>
-              </div>
-              <button
-                onClick={() => addEntry('weekday')}
-                className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition shadow-lg shadow-green-500/30"
-              >
-                <Plus className="w-4 h-4" /> Tambah
-              </button>
-            </div>
-
-            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mb-4">
-              <h3 className="font-bold text-green-900 dark:text-green-300 mb-2">⚡ Sistem Perhitungan Per Hari:</h3>
-              <ul className="text-sm text-green-800 dark:text-green-200 space-y-1">
-                <li>• <strong>1 jam pertama:</strong> Rate 150%</li>
-                <li>• <strong>Jam ke-2 dst:</strong> Rate 200%</li>
-              </ul>
-            </div>
-
-            {weekdayEntries.map((entry, idx) => (
-              <div key={idx} className="flex gap-3 mb-3 items-center">
-                <div className="flex-1 flex items-center relative">
-                  <input
-                    type="number"
-                    placeholder="Masukkan Jumlah Jam"
-                    value={entry.hours}
-                    onChange={(e) => updateEntry('weekday', idx, 'hours', e.target.value)}
-                    className="w-full pl-3 pr-12 py-2 bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 transition-all"
-                  />
-                  <span className="absolute right-3 text-sm font-semibold text-gray-400">Jam</span>
-                </div>
-                <button
-                  onClick={() => removeEntry('weekday', idx)}
-                  className="px-3 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-500 dark:hover:bg-red-600 hover:text-white transition-colors"
-                  title="Hapus baris"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg mt-3 space-y-2">
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                <span className="font-bold">Total Jam Weekday:</span> {weekdayHours} jam
-              </p>
-              {weekdayCalc.rate150 > 0 && (
-                <p className="text-sm text-green-700 dark:text-green-400">
-                  • {weekdayCalc.rate150.toFixed(2)} jam @ 150% = {formatCurrency(weekdayCalc.amount150)}
-                </p>
-              )}
-              {weekdayCalc.rate200 > 0 && (
-                <p className="text-sm text-emerald-700 dark:text-emerald-400">
-                  • {weekdayCalc.rate200.toFixed(2)} jam @ 200% = {formatCurrency(weekdayCalc.amount200)}
-                </p>
-              )}
-              <div className="border-t-2 border-gray-300 dark:border-gray-700 pt-2 mt-2">
-                <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-                  Total Weekday: {formatCurrency(weekdayCalc.total)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Holiday Section */}
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-3">
-              <div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
-                  Overtime Weekend/Holiday
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Jumat - Minggu & Hari Libur</p>
-              </div>
-              <button
-                onClick={() => addEntry('holiday')}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition shadow-lg shadow-blue-500/30"
-              >
-                <Plus className="w-4 h-4" /> Tambah
-              </button>
-            </div>
-
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-4">
-              <h3 className="font-bold text-blue-900 dark:text-blue-300 mb-2">⚡ Sistem Perhitungan Per Hari (PP 35/2021):</h3>
-              <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-                <li>• <strong>Jam 1-8:</strong> Rate 200%</li>
-                <li>• <strong>Jam ke-9:</strong> Rate 300%</li>
-                <li>• <strong>Jam ke-10 dst:</strong> Rate 400%</li>
-              </ul>
-            </div>
-
-            {holidayEntries.map((entry, idx) => (
-              <div key={idx} className="flex gap-3 mb-3 items-center">
-                <div className="flex-1 flex items-center relative">
-                  <input
-                    type="number"
-                    placeholder="Masukkan Jumlah Jam"
-                    value={entry.hours}
-                    onChange={(e) => updateEntry('holiday', idx, 'hours', e.target.value)}
-                    className="w-full pl-3 pr-12 py-2 bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all"
-                  />
-                  <span className="absolute right-3 text-sm font-semibold text-gray-400">Jam</span>
-                </div>
-                <button
-                  onClick={() => removeEntry('holiday', idx)}
-                  className="px-3 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-500 dark:hover:bg-red-600 hover:text-white transition-colors"
-                  title="Hapus baris"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-4 rounded-lg mt-3 space-y-2">
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                <span className="font-bold">Total Jam Holiday:</span> {holidayHours} jam
-              </p>
-              {holidayCalc.rate200 > 0 && (
-                <p className="text-sm text-blue-700 dark:text-blue-400">
-                  • {holidayCalc.rate200.toFixed(2)} jam @ 200% = {formatCurrency(holidayCalc.amount200)}
-                </p>
-              )}
-              {holidayCalc.rate300 > 0 && (
-                <p className="text-sm text-purple-700 dark:text-purple-400">
-                  • {holidayCalc.rate300.toFixed(2)} jam @ 300% = {formatCurrency(holidayCalc.amount300)}
-                </p>
-              )}
-              {holidayCalc.rate400 > 0 && (
-                <p className="text-sm text-rose-700 dark:text-rose-400">
-                  • {holidayCalc.rate400.toFixed(2)} jam @ 400% = {formatCurrency(holidayCalc.amount400)}
-                </p>
-              )}
-              <div className="border-t-2 border-gray-300 dark:border-gray-700 pt-2 mt-2">
-                <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-                  Total Holiday: {formatCurrency(holidayCalc.total)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Salary Section */}
-          <div className="mb-6 p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border-2 border-teal-200 dark:border-teal-900/50">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-teal-300 mb-2">
-              Tambahan Gaji/Tunjangan (jika ada)
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                value={additionalSalary}
-                onChange={(e) => setAdditionalSalary(e.target.value)}
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border-2 border-teal-200 dark:border-teal-900/50 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                placeholder="Masukkan nominal tambahan (misal: Tunjangan)"
-              />
-            </div>
-          </div>
-
-          {/* Grand Total */}
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 dark:from-indigo-600 dark:to-purple-700 text-white p-6 rounded-xl shadow-xl shadow-indigo-500/20">
-            <h3 className="text-2xl font-bold mb-4">Total Overtime</h3>
-            <div className="space-y-2 text-lg">
-              <div className="flex justify-between">
-                <span>Weekday ({weekdayHours.toFixed(2)}h):</span>
-                <span>{formatCurrency(weekdayCalc.total)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Holiday ({holidayHours.toFixed(2)}h):</span>
-                <span>{formatCurrency(holidayCalc.total)}</span>
-              </div>
-
-              <div className="border-t-2 border-white/30 pt-3 mt-3 space-y-2">
-                <div className="flex justify-between text-xl">
-                  <p>Subtotal Lembur:</p>
-                  <p>{formatCurrency(calculatedTotal)}</p>
-                </div>
-
-                {parseFloat(additionalSalary) > 0 && (
-                  <div className="flex justify-between text-xl">
-                    <span>Tambahan:</span>
-                    <span>{formatCurrency(parseFloat(additionalSalary))}</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="border-t-2 border-white/30 pt-3 mt-3">
-                {isCapped && (
-                  <p className="text-sm text-yellow-200 mb-2 text-right">
-                    ⚠️ Melebihi batas maksimal, dipotong ke {formatCurrency(maxCap)}
-                  </p>
-                )}
-                <div className="flex justify-between text-3xl font-bold">
-                  <p>TOTAL:</p>
-                  <p 
-                    className="blur-md hover:blur-none transition-all duration-300 cursor-help select-none"
-                    title="Hover untuk melihat total (Gaji + Lembur)"
-                  >
-                    {formatCurrency(finalTotal)}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setIsTaxModalOpen(true)}
-                className="w-full mt-4 py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-2 border border-white/30 backdrop-blur-sm"
-              >
-                <Calculator className="w-5 h-5" />
-                Lihat Estimasi Gaji Bersih (PPh 21)
-              </button>
-            </div>
-          </div>
-                  </div>
-        
-                {/* Formula Reference */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 transition-colors duration-300 border border-transparent dark:border-slate-700">
-                  <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4">📋 Rumus Perhitungan</h3>
-                  <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                    <p><strong>Tarif per Jam:</strong> Gaji Pokok ÷ 173 jam = {formatCurrency(hourlyRate)}</p>
-                    
-                    <div className="border-t dark:border-slate-700 pt-3 mt-3">
-                      <p className="font-bold mb-2">Weekday (Senin - Kamis) - Progresif Per Hari:</p>
-                      <p className="ml-4">• Jam pertama: × {formatCurrency(hourlyRate)} × 1.5 (150%)</p>
-                      <p className="ml-4">• Jam ke-2 dst: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
-                    </div>
-                    
-                    <div className="border-t dark:border-slate-700 pt-3 mt-3">
-                      <p className="font-bold mb-2">Weekend/Holiday (Jumat - Minggu & Libur) - Progresif Per Hari (PP 35/2021):</p>
-                      <p className="ml-4">• Jam 1-8: × {formatCurrency(hourlyRate)} × 2 (200%)</p>
-                      <p className="ml-4">• Jam ke-9: × {formatCurrency(hourlyRate)} × 3 (300%)</p>
-                      <p className="ml-4">• Jam ke-10 dst: × {formatCurrency(hourlyRate)} × 4 (400%)</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-900/50 rounded-lg p-4 mt-4">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-                      <strong>💡 Contoh Weekday:</strong> Kerja 4 jam di Senin:<br/>
-                      • 1 jam @ 150% = 1 × {formatCurrency(hourlyRate)} × 1.5 = {formatCurrency(hourlyRate * 1.5)}<br/>
-                      • 3 jam @ 200% = 3 × {formatCurrency(hourlyRate)} × 2 = {formatCurrency(hourlyRate * 2 * 3)}<br/>
-                      • <strong>Total = {formatCurrency(hourlyRate * 1.5 + hourlyRate * 2 * 3)}</strong>
-                    </p>
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>💡 Contoh Weekend:</strong> Kerja 10 jam di Jumat:<br/>
-                      • 8 jam @ 200% = 8 × {formatCurrency(hourlyRate)} × 2<br/>
-                      • 1 jam @ 300% = 1 × {formatCurrency(hourlyRate)} × 3<br/>
-                      • 1 jam @ 400% = 1 × {formatCurrency(hourlyRate)} × 4<br/>
-                      • <strong>Total = {formatCurrency(hourlyRate * 2 * 8 + hourlyRate * 3 * 1 + hourlyRate * 4 * 1)}</strong>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <TaxModal 
-                isOpen={isTaxModalOpen}
-                onClose={() => setIsTaxModalOpen(false)}
-                onDownload={downloadExcel}
-                ptkpCategory={ptkpCategory}
-                setPtkpCategory={setPtkpCategory}
-                finalTotal={finalTotal}
-                taxableGross={taxableGross}
-                terRate={terRate}
-                taxAmount={taxAmount}
-                bpjs={{ kes: bpjsKesEmp, jht: bpjsJHTEmp, jp: bpjsJPEmp, total: totalBpjsEmp }}
-                netSalary={netSalary}
-                formatCurrency={formatCurrency}
-              />
-            </div>
-          );
-        }
-
-        // --- 5. TAX MODAL COMPONENT (The Calculation Popup) ---
-        function TaxModal({ isOpen, onClose, onDownload, ptkpCategory, setPtkpCategory, finalTotal, taxableGross, terRate, taxAmount, bpjs, netSalary, formatCurrency }) {
-          const [showAmounts, setShowAmounts] = useState(false);
-
-          if (!isOpen) return null;
-
-          return (
-            <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-              onClick={(e) => e.target === e.currentTarget && onClose()}
-            >
-              <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-zoom-in max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center p-4 border-b dark:border-slate-700">
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                    <Calculator className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                    Estimasi Gaji Bersih
-                  </h3>
+            {/* Salary & Configuration Card */}
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowAmounts(!showAmounts)}
-                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-500 dark:text-gray-400"
-                      title={showAmounts ? "Sembunyikan Nominal" : "Tampilkan Nominal"}
-                    >
-                      {showAmounts ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors">
-                      <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    </button>
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <CardTitle className="text-lg">Gaji Pokok & Konfigurasi</CardTitle>
+                  </div>
+                  <Badge variant="secondary">Langkah 1</Badge>
+                </div>
+                <CardDescription>Masukkan Gaji Pokok untuk menentukan tarif per jam (Gaji / 173)</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Basic Salary Input with dot separator & placeholder Contoh: 1.000.000 */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Gaji Pokok (Basic Salary)
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type={showBasicSalary ? "text" : "password"}
+                        value={showBasicSalary ? formatNumberWithDots(basicSalary) : basicSalary}
+                        onChange={handleSalaryChange}
+                        placeholder="Contoh: 1.000.000"
+                        className="pr-10 font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowBasicSalary(!showBasicSalary)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                        title={showBasicSalary ? "Sembunyikan Input Gaji Pokok" : "Tampilkan Input Gaji Pokok"}
+                      >
+                        {showBasicSalary ? <EyeOff className="w-4 h-4 text-indigo-500" /> : <Eye className="w-4 h-4 text-indigo-500" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Additional Salary Input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Tambahan Gaji / Tunjangan (Opsional)
+                    </label>
+                    <Input
+                      type="text"
+                      value={formatNumberWithDots(additionalSalary)}
+                      onChange={(e) => setAdditionalSalary(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Contoh: 500.000"
+                      className="font-medium"
+                    />
                   </div>
                 </div>
 
-                <div className="p-5 space-y-4 overflow-y-auto">
-                  {/* Category Selection */}
-                  <div className="flex items-end gap-3">
+                {/* Hourly Rate Pill & Max Cap Configuration */}
+                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-500">Tarif per Jam:</span>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-md border border-indigo-200/50 dark:border-indigo-900/50">
+                      {formatCurrency(hourlyRate)} / jam
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={useMaxCap}
+                        onChange={setUseMaxCap}
+                        id="max-cap-switch"
+                      />
+                      <label htmlFor="max-cap-switch" className="text-xs font-medium cursor-pointer text-slate-700 dark:text-slate-300">
+                        Batas Maks Overtime
+                      </label>
+                    </div>
+
+                    {useMaxCap && (
+                      <Input
+                        type="text"
+                        value={formatNumberWithDots(maxCap)}
+                        onChange={(e) => setMaxCap(e.target.value.replace(/\D/g, ''))}
+                        className="w-32 h-8 text-xs font-medium"
+                        placeholder="Maks (Rp)"
+                      />
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Weekday Overtime Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <CardTitle className="text-lg">Overtime Weekday</CardTitle>
+                      <CardDescription>Senin - Kamis (Progresif: Jam 1 @ 150%, Jam 2+ @ 200%)</CardDescription>
+                    </div>
+                  </div>
+
+                  {/* Quick Choice Buttons: 1H, 2H, 3H, 4H, 5H */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400 font-medium hidden sm:inline-block">Quick Add:</span>
+                    {[1, 2, 3, 4, 5].map((h) => (
+                      <Button
+                        key={h}
+                        variant="outline"
+                        size="xs"
+                        onClick={() => addEntry('weekday', h)}
+                        className="h-7 px-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                        title={`Tambah ${h} Jam`}
+                      >
+                        +{h}H
+                      </Button>
+                    ))}
+                    <Button variant="emerald" size="xs" onClick={() => addEntry('weekday', 2)}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Baris
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Compact Entries Grid */}
+                {weekdayEntries.length === 0 ? (
+                  <div className="p-4 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-400">
+                    Belum ada jam lembur weekday. Klik tombol pilihan cepat di atas.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2.5 items-center">
+                    {weekdayEntries.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-1.5 p-1.5 px-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors"
+                      >
+                        <span className="text-[11px] font-semibold text-slate-500 w-10 text-center">H-{idx + 1}</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="24"
+                          step="0.5"
+                          placeholder="0"
+                          value={entry.hours}
+                          onChange={(e) => updateEntry('weekday', idx, e.target.value)}
+                          className="w-16 h-8 text-center font-bold text-xs p-1 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700"
+                        />
+                        <span className="text-xs text-slate-400 font-medium">jam</span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => removeEntry('weekday', idx)}
+                          className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Subtotal Chips */}
+                <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      Total Weekday: <strong className="text-emerald-700 dark:text-emerald-400">{weekdayHours} jam</strong>
+                    </span>
+                    {weekdayCalc.rate150 > 0 && (
+                      <Badge variant="emerald" className="text-[11px]">
+                        150%: {weekdayCalc.rate150}h ({formatCurrency(weekdayCalc.amount150)})
+                      </Badge>
+                    )}
+                    {weekdayCalc.rate200 > 0 && (
+                      <Badge variant="emerald" className="text-[11px]">
+                        200%: {weekdayCalc.rate200}h ({formatCurrency(weekdayCalc.amount200)})
+                      </Badge>
+                    )}
+                  </div>
+
+                  <span className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">
+                    {formatCurrency(weekdayCalc.total)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Weekend / Holiday Overtime Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div>
+                      <CardTitle className="text-lg">Overtime Weekend / Libur</CardTitle>
+                      <CardDescription>Jumat - Minggu (Progresif: 1-8h @ 200%, 9h @ 300%, 10h+ @ 400%)</CardDescription>
+                    </div>
+                  </div>
+
+                  {/* Quick Choice Buttons for Weekend: 4H, 6H, 10H, 12H */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400 font-medium hidden sm:inline-block">Quick Add:</span>
+                    {[4, 6, 10, 12].map((h) => (
+                      <Button
+                        key={h}
+                        variant="outline"
+                        size="xs"
+                        onClick={() => addEntry('holiday', h)}
+                        className="h-7 px-2 text-xs font-bold text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+                        title={`Tambah ${h} Jam`}
+                      >
+                        +{h}H
+                      </Button>
+                    ))}
+                    <Button variant="blue" size="xs" onClick={() => addEntry('holiday', 8)}>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Baris
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Compact Entries Grid */}
+                {holidayEntries.length === 0 ? (
+                  <div className="p-4 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-400">
+                    Belum ada jam lembur weekend. Klik tombol pilihan cepat di atas.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2.5 items-center">
+                    {holidayEntries.map((entry, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-1.5 p-1.5 px-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xs hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
+                      >
+                        <span className="text-[11px] font-semibold text-slate-500 w-10 text-center">H-{idx + 1}</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="24"
+                          step="0.5"
+                          placeholder="0"
+                          value={entry.hours}
+                          onChange={(e) => updateEntry('holiday', idx, e.target.value)}
+                          className="w-16 h-8 text-center font-bold text-xs p-1 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700"
+                        />
+                        <span className="text-xs text-slate-400 font-medium">jam</span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => removeEntry('holiday', idx)}
+                          className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Subtotal Chips */}
+                <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                      Total Weekend: <strong className="text-blue-700 dark:text-blue-400">{holidayHours} jam</strong>
+                    </span>
+                    {holidayCalc.rate200 > 0 && (
+                      <Badge variant="blue" className="text-[11px]">
+                        200%: {holidayCalc.rate200}h ({formatCurrency(holidayCalc.amount200)})
+                      </Badge>
+                    )}
+                    {holidayCalc.rate300 > 0 && (
+                      <Badge variant="purple" className="text-[11px]">
+                        300%: {holidayCalc.rate300}h ({formatCurrency(holidayCalc.amount300)})
+                      </Badge>
+                    )}
+                    {holidayCalc.rate400 > 0 && (
+                      <Badge variant="amber" className="text-[11px]">
+                        400%: {holidayCalc.rate400}h ({formatCurrency(holidayCalc.amount400)})
+                      </Badge>
+                    )}
+                  </div>
+
+                  <span className="font-bold text-blue-700 dark:text-blue-300 text-sm">
+                    {formatCurrency(holidayCalc.total)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+
+          {/* RIGHT COLUMN: Real-Time Summary & Inline Tax Breakdown (5 Cols) */}
+          <div className="lg:col-span-5 space-y-6">
+
+            {/* Overtime Summary Card */}
+            <Card className="border-indigo-200/60 dark:border-indigo-900/60 overflow-hidden shadow-md">
+              <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 p-5 text-white">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    <h3 className="font-bold text-lg">Ringkasan Overtime</h3>
+                  </div>
+                  <Badge variant="secondary" className="bg-white/20 text-white border-none backdrop-blur-md">
+                    Total
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-indigo-100 mt-3">
+                  <div className="flex justify-between">
+                    <span>Weekday ({weekdayHours} jam):</span>
+                    <span className="font-semibold">{formatCurrency(weekdayCalc.total)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Weekend ({holidayHours} jam):</span>
+                    <span className="font-semibold">{formatCurrency(holidayCalc.total)}</span>
+                  </div>
+
+                  {parseFloat(additionalSalary) > 0 && (
+                    <div className="flex justify-between text-teal-200">
+                      <span>Tambahan Gaji:</span>
+                      <span className="font-semibold">{formatCurrency(parseFloat(additionalSalary))}</span>
+                    </div>
+                  )}
+
+                  {isCapped && (
+                    <div className="p-2 rounded bg-amber-500/20 text-amber-200 text-[11px] mt-2 border border-amber-400/30">
+                      ⚠️ Kalkulasi ({formatCurrency(calculatedTotal)}) dipotong ke batas maksimal ({formatCurrency(maxCap)})
+                    </div>
+                  )}
+
+                  {/* TOTAL OVERTIME (Always visible, not blurred) */}
+                  <div className="border-t border-white/20 pt-2.5 mt-2 flex justify-between items-center text-sm font-bold text-white">
+                    <span>TOTAL OVERTIME:</span>
+                    <span className="text-base text-yellow-300 font-extrabold">{formatCurrency(grandTotal)}</span>
+                  </div>
+
+                  {/* INDEPENDENT PRIVACY 1: Total Bruto (Gaji + Lembur) */}
+                  <div className="border-t border-white/20 pt-3 mt-2 flex items-end justify-between">
+                    <div className="w-full">
+                      <div className="flex items-center justify-between gap-1.5 mb-1">
+                        <p className="text-[11px] uppercase tracking-wider text-indigo-200 font-medium">
+                          Total Bruto (Gaji + Lembur)
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowGrossPrivacy(!showGrossPrivacy)}
+                          className="flex items-center gap-1 text-[11px] bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-white transition-colors"
+                          title={showGrossPrivacy ? "Sembunyikan Total Bruto" : "Tampilkan Total Bruto"}
+                        >
+                          {showGrossPrivacy ? <EyeOff className="w-3.5 h-3.5 text-yellow-300" /> : <Eye className="w-3.5 h-3.5 text-yellow-300" />}
+                          <span className="text-[10px]">{showGrossPrivacy ? "Hide" : "Show"}</span>
+                        </button>
+                      </div>
+
+                      <p
+                        onClick={() => setShowGrossPrivacy(!showGrossPrivacy)}
+                        className="text-2xl font-black cursor-pointer hover:opacity-90 transition-opacity"
+                        title="Klik untuk toggle privasi Total Bruto"
+                      >
+                        {renderGrossAmount(finalTotal, 'Rp •••••••••')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Inline Tax & Net Salary Breakdown Panel */}
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <CardTitle className="text-base">Estimasi PPh 21 TER & Gaji Bersih</CardTitle>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTaxBreakdown(!showTaxBreakdown)}
+                    className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border-indigo-200 dark:border-indigo-800 shadow-2xs transition-all"
+                  >
+                    {showTaxBreakdown ? "Sembunyikan Rincian ▲" : "Tampilkan Rincian ▼"}
+                  </Button>
+                </div>
+                <CardDescription>Rincian potongan PPh 21 (Standar TER 2024) & BPJS Ketenagakerjaan/Kesehatan</CardDescription>
+              </CardHeader>
+
+              {showTaxBreakdown && (
+                <CardContent className="space-y-4 pt-1">
+                  {/* PTKP Category Selector */}
+                  <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200/80 dark:border-slate-800">
                     <div className="flex-1">
-                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
                         Kategori PTKP
                       </label>
-                      <select 
+                      <select
                         value={ptkpCategory}
                         onChange={(e) => setPtkpCategory(e.target.value)}
-                        className="w-full px-3 py-1.5 text-sm bg-gray-50 dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 rounded-lg text-gray-900 dark:text-white outline-none transition-all"
+                        className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1.5 text-slate-900 dark:text-slate-100 font-medium outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         {Object.keys(TER_CATEGORIES).map(cat => (
                           <option key={cat} value={cat}>{TER_CATEGORIES[cat].label}</option>
                         ))}
                       </select>
                     </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                      <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold text-center">TER</p>
-                      <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{(terRate * 100).toFixed(2)}%</p>
+
+                    <div className="text-center bg-indigo-50 dark:bg-indigo-950/80 p-2 rounded-lg border border-indigo-200/60 dark:border-indigo-900/60 min-w-[70px]">
+                      <span className="block text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">TER</span>
+                      <span className="text-xs font-black text-indigo-700 dark:text-indigo-300">{(terRate * 100).toFixed(2)}%</span>
                     </div>
                   </div>
 
-                  {/* Calculation Breakdown */}
-                  <div className="bg-gray-50 dark:bg-slate-900/50 p-3 rounded-xl space-y-2">
-                    <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                      <span>Total Gaji Bruto (Gross):</span>
-                      <span className={`font-semibold transition-all duration-300 ${!showAmounts ? 'blur-sm select-none' : ''}`}>
-                        {formatCurrency(finalTotal)}
+                  {/* Deduction Breakdown Table */}
+                  <div className="space-y-2 text-xs">
+                    {/* INDEPENDENT PRIVACY 2: Penghasilan Bruto (Kena Pajak) */}
+                    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 pb-2">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        Penghasilan Bruto (Kena Pajak):
+                        <button
+                          type="button"
+                          onClick={() => setShowTaxCardPrivacy(!showTaxCardPrivacy)}
+                          className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors p-0.5"
+                          title={showTaxCardPrivacy ? "Sembunyikan Nominal Pajak" : "Tampilkan Nominal Pajak"}
+                        >
+                          {showTaxCardPrivacy ? <EyeOff className="w-3.5 h-3.5 text-indigo-500" /> : <Eye className="w-3.5 h-3.5 text-indigo-500" />}
+                        </button>
+                      </span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
+                        {renderTaxCardAmount(taxableGross, 'Rp •••••••••')}
                       </span>
                     </div>
-                    
-                    <div className="pt-2 border-t dark:border-slate-700 space-y-1.5">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Potongan Wajib:</p>
-                      
-                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 group relative">
-                        <span className="flex items-center gap-1 border-b border-dotted border-gray-400 cursor-help" title={`Dihitung dari Bruto + Iuran BPJS Perusahaan (${formatCurrency(taxableGross)})`}>
-                          PPh 21:
-                        </span>
-                        <span className="font-semibold text-red-500">
-                          -{formatCurrency(taxAmount)}
-                        </span>
-                      </div>
 
-                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                        <span className="flex items-center gap-1">PPh 21 TER ({(terRate * 100).toFixed(2)}%):</span>
+                        <span className="font-bold text-red-500">-{formatCurrency(taxAmount)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
                         <span>BPJS Kesehatan (1%):</span>
-                        <span className="font-semibold text-red-500">
-                          -{formatCurrency(bpjs.kes)}
-                        </span>
+                        <span className="font-semibold text-red-500">-{formatCurrency(bpjsKesEmp)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
                         <span>BPJS TK - JHT (2%):</span>
-                        <span className="font-semibold text-red-500">
-                          -{formatCurrency(bpjs.jht)}
-                        </span>
+                        <span className="font-semibold text-red-500">-{formatCurrency(bpjsJHTEmp)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
                         <span>BPJS TK - JP (1%):</span>
-                        <span className="font-semibold text-red-500">
-                          -{formatCurrency(bpjs.jp)}
-                        </span>
+                        <span className="font-semibold text-red-500">-{formatCurrency(bpjsJPEmp)}</span>
                       </div>
                     </div>
 
-                    <div className="flex justify-between text-xs font-bold text-gray-700 dark:text-gray-300 border-t dark:border-slate-700 pt-1.5">
+                    <div className="flex justify-between text-xs font-bold text-slate-800 dark:text-slate-200 border-t border-slate-200 dark:border-slate-800 pt-2">
                       <span>Total Potongan:</span>
-                      <span className="font-semibold">
-                        {formatCurrency(taxAmount + bpjs.total)}
+                      <span className="text-red-600 dark:text-red-400">
+                        -{formatCurrency(taxAmount + totalBpjsEmp)}
                       </span>
                     </div>
                   </div>
 
-                  {/* Net Result */}
-                  <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-4 rounded-xl text-white text-center shadow-lg shadow-green-500/20 relative overflow-hidden">
-                    <p className="text-xs font-medium opacity-90 mb-1">Take Home Pay (Estimasi)</p>
-                    <p className={`text-2xl font-bold transition-all duration-500 ${!showAmounts ? 'blur-md scale-95 opacity-50 select-none' : ''}`}>
-                      {formatCurrency(netSalary)}
+                  {/* INDEPENDENT PRIVACY 2 (Cont.): ESTIMASI TAKE HOME PAY (BERSIH) Callout */}
+                  <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-4 rounded-xl text-white shadow-md shadow-emerald-600/20 text-center relative overflow-hidden">
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <p className="text-xs text-emerald-100 font-bold tracking-wider">ESTIMASI TAKE HOME PAY (BERSIH)</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowTaxCardPrivacy(!showTaxCardPrivacy)}
+                        className="bg-white/20 hover:bg-white/30 text-white p-1 rounded-md transition-colors flex items-center gap-1 text-[10px] px-2 font-medium"
+                        title={showTaxCardPrivacy ? "Sembunyikan Take Home Pay" : "Tampilkan Take Home Pay"}
+                      >
+                        {showTaxCardPrivacy ? <EyeOff className="w-3.5 h-3.5 text-yellow-300" /> : <Eye className="w-3.5 h-3.5 text-yellow-300" />}
+                        <span>{showTaxCardPrivacy ? "Privasi On" : "Lihat Nominal"}</span>
+                      </button>
+                    </div>
+
+                    <p
+                      onClick={() => setShowTaxCardPrivacy(!showTaxCardPrivacy)}
+                      className="text-2xl md:text-3xl font-black cursor-pointer hover:opacity-90 transition-opacity mt-1"
+                      title="Klik untuk toggle privasi"
+                    >
+                      {renderTaxCardAmount(netSalary, 'Rp •••••••••')}
                     </p>
                   </div>
+                </CardContent>
+              )}
+            </Card>
 
-                  <p className="text-[9px] text-gray-400 dark:text-gray-500 text-center leading-tight">
-                    *PPh 21 TER mengikuti standar Dirjen Pajak 2024 (Bruto + Iuran Perusahaan).<br/>
-                    *BPJS dihitung dari Gaji Pokok saja.
+            {/* Collapsible Formula Reference Card with Hint */}
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+              <CardHeader className="pb-3 cursor-pointer select-none" onClick={() => setShowFormula(!showFormula)}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span>📋</span> Rumus Perhitungan
+                    </CardTitle>
+                    <CardDescription className="text-[11px] text-amber-700 dark:text-amber-300 font-medium mt-1">
+                      💡 Rate per jam = Gaji ÷ 173 ({formatCurrency(hourlyRate)}). Weekday: 150-200% | Weekend: 200-400%
+                    </CardDescription>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); setShowFormula(!showFormula); }}
+                    className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border-indigo-200 dark:border-indigo-800 shrink-0 shadow-2xs"
+                  >
+                    {showFormula ? "Sembunyikan ▲" : "Lihat Detail ▼"}
+                  </Button>
+                </div>
+              </CardHeader>
+
+              {showFormula && (
+                <CardContent className="space-y-3 text-xs text-slate-700 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <p>
+                    <strong>Tarif per Jam:</strong> Gaji Pokok ÷ 173 jam = <span className="font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(hourlyRate)}</span>
                   </p>
-                </div>
 
-                <div className="p-3 bg-gray-50 dark:bg-slate-900/80 flex gap-2 border-t dark:border-slate-700">
-                  <button 
-                    onClick={onDownload}
-                    className="flex-1 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download Excel
-                  </button>
-                  <button 
-                    onClick={onClose}
-                    className="px-6 py-2 text-sm bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors font-semibold"
-                  >
-                    Tutup
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        }
-        
+                  <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <p className="font-bold text-slate-900 dark:text-slate-100 mb-1.5">
+                      Weekday (Senin - Kamis) - Progresif Per Hari:
+                    </p>
+                    <ul className="space-y-1.5 pl-2 text-slate-600 dark:text-slate-400">
+                      <li>• <strong>Jam pertama:</strong> × {formatCurrency(hourlyRate)} × 1.5 (150%)</li>
+                      <li>• <strong>Jam ke-2 dst:</strong> × {formatCurrency(hourlyRate)} × 2 (200%)</li>
+                    </ul>
+                  </div>
+
+                  <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <p className="font-bold text-slate-900 dark:text-slate-100 mb-1.5">
+                      Weekend/Holiday (Jumat - Minggu & Libur) - Progresif Per Hari (PP 35/2021):
+                    </p>
+                    <ul className="space-y-1.5 pl-2 text-slate-600 dark:text-slate-400">
+                      <li>• <strong>Jam 1-8:</strong> × {formatCurrency(hourlyRate)} × 2 (200%)</li>
+                      <li>• <strong>Jam ke-9:</strong> × {formatCurrency(hourlyRate)} × 3 (300%)</li>
+                      <li>• <strong>Jam ke-10 dst:</strong> × {formatCurrency(hourlyRate)} × 4 (400%)</li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3 mt-2 text-amber-900 dark:text-amber-200 space-y-2">
+                    <p className="text-[11px] font-bold">💡 Contoh Perhitungan:</p>
+                    <p className="text-[11px] leading-relaxed">
+                      • <strong>Weekday (4 jam):</strong> 1h × {formatCurrency(hourlyRate)} × 1.5 + 3h × {formatCurrency(hourlyRate)} × 2
+                    </p>
+                    <p className="text-[11px] leading-relaxed">
+                      • <strong>Weekend (10 jam):</strong> 8h × {formatCurrency(hourlyRate)} × 2 + 1h × {formatCurrency(hourlyRate)} × 3 + 1h × {formatCurrency(hourlyRate)} × 4
+                    </p>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
+          </div>
+
+        </div>
+      </main>
+    </div>
+  );
+}
