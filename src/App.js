@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Plus,
-  Trash2,
-  Calculator,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Moon,
-  Sun,
+import { 
+  Plus, 
+  Trash2, 
+  Calculator, 
+  AlertCircle, 
+  Eye, 
+  EyeOff, 
+  Moon, 
+  Sun, 
   RotateCcw,
   TrendingUp,
   ShieldCheck,
   Clock,
   Briefcase,
   HelpCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Target,
+  Sparkles,
+  X,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
 import * as XLSX from 'xlsx';
@@ -33,7 +38,7 @@ export default function OvertimeCalculator() {
   const [additionalSalary, setAdditionalSalary] = useState('');
   const [maxCap, setMaxCap] = useState(2500000);
   const [useMaxCap, setUseMaxCap] = useState(true);
-
+  
   // Fully Decoupled & Independent Privacy States:
   const [showBasicSalary, setShowBasicSalary] = useState(true); // Independent toggle for Gaji Pokok input
   const [showGrossPrivacy, setShowGrossPrivacy] = useState(false); // Independent toggle ONLY for Total Bruto (Gaji + Lembur)
@@ -41,11 +46,19 @@ export default function OvertimeCalculator() {
 
   const [showTaxBreakdown, setShowTaxBreakdown] = useState(false); // Default collapsed
   const [showFormula, setShowFormula] = useState(false); // Collapsible formula reference state
+  
+  // Reverse Solver Modal States:
+  const [showReverseModal, setShowReverseModal] = useState(false);
+  const [targetAmountInput, setTargetAmountInput] = useState('');
+  const [targetType, setTargetType] = useState('overtime'); // 'overtime' or 'net'
+  const [solveStrategy, setSolveStrategy] = useState('mixed'); // 'weekday', 'weekend', 'mixed'
+  const [solvedResult, setSolvedResult] = useState(null);
+
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved !== null ? JSON.parse(saved) : false;
   });
-
+  
   // Tax & PTKP Category State
   const [ptkpCategory, setPtkpCategory] = useState('A');
 
@@ -79,6 +92,8 @@ export default function OvertimeCalculator() {
     setWeekdayEntries([]);
     setHolidayEntries([]);
     setAdditionalSalary('');
+    setSolvedResult(null);
+    setTargetAmountInput('');
   };
 
   const hourlyRate = (parseFloat(basicSalary) || 0) / 173;
@@ -137,7 +152,7 @@ export default function OvertimeCalculator() {
   const calculateWeekdayProgressive = () => {
     let total150 = 0, total200 = 0;
     let hours150 = 0, hours200 = 0;
-
+    
     weekdayEntries.forEach(entry => {
       const hours = parseFloat(entry.hours) || 0;
       if (hours === 0) return;
@@ -155,15 +170,15 @@ export default function OvertimeCalculator() {
       }
     });
 
-    return {
+    return { 
       total: total150 + total200,
-      rate150: hours150,
+      rate150: hours150, 
       rate200: hours200,
       amount150: total150,
       amount200: total200
     };
   };
-
+  
   const calculateHolidayProgressive = () => {
     let total200 = 0, total300 = 0, total400 = 0;
     let sumH200 = 0, sumH300 = 0, sumH400 = 0;
@@ -191,7 +206,7 @@ export default function OvertimeCalculator() {
         sumH400 += h400;
       }
     });
-
+    
     return {
       total: total200 + total300 + total400,
       rate200: sumH200,
@@ -206,7 +221,7 @@ export default function OvertimeCalculator() {
   const weekdayCalc = calculateWeekdayProgressive();
   const holidayCalc = calculateHolidayProgressive();
   const calculatedTotal = weekdayCalc.total + holidayCalc.total;
-
+  
   const parsedMaxCap = parseFloat(maxCap) || 0;
   const grandTotal = useMaxCap ? Math.min(calculatedTotal, parsedMaxCap) : calculatedTotal;
   const finalTotal = (parseFloat(basicSalary) || 0) + (parseFloat(additionalSalary) || 0) + grandTotal;
@@ -222,7 +237,7 @@ export default function OvertimeCalculator() {
   };
 
   const bpjsBase = (parseFloat(basicSalary) || 0);
-
+  
   const bpjsKesEmp = Math.min(bpjsBase, 12000000) * RATES.emp.kes;
   const bpjsJHTEmp = bpjsBase * RATES.emp.jht;
   const bpjsJPEmp = Math.min(bpjsBase, 10047900) * RATES.emp.jp;
@@ -234,7 +249,7 @@ export default function OvertimeCalculator() {
   const totalBpjsCo = bpjsKesCo + bpjsJKKCo + bpjsJKMCo;
 
   const taxableGross = finalTotal + totalBpjsCo;
-
+  
   const getTerRate = (income) => {
     const category = TER_CATEGORIES[ptkpCategory];
     const bracket = category.brackets.find(b => income >= b.min && (b.max === null || income <= b.max || b.max === Infinity));
@@ -254,13 +269,135 @@ export default function OvertimeCalculator() {
     }).format(num || 0);
   };
 
+  // --- REVERSE SOLVER ALGORITHM ---
+  const handleSolveOvertime = () => {
+    const rate = hourlyRate;
+    const target = parseFloat(targetAmountInput.replace(/\D/g, '')) || 0;
+
+    if (!rate || rate <= 0) {
+      alert("Silahkan isi Gaji Pokok terlebih dahulu untuk menentukan tarif per jam.");
+      return;
+    }
+    if (!target || target <= 0) {
+      alert("Silahkan masukkan nominal target aktual yang valid.");
+      return;
+    }
+
+    let requiredOtPay = target;
+
+    // If target type is Take Home Pay (net)
+    if (targetType === 'net') {
+      const basePlusAdd = (parseFloat(basicSalary) || 0) + (parseFloat(additionalSalary) || 0);
+      let low = 0, high = 100000000;
+      for (let i = 0; i < 50; i++) {
+        let mid = (low + high) / 2;
+        let testGross = basePlusAdd + mid;
+        let testTaxable = testGross + totalBpjsCo;
+        let testRate = getTerRate(testTaxable);
+        let testTax = testTaxable * testRate;
+        let testNet = testGross - testTax - totalBpjsEmp;
+        if (testNet < target) {
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      requiredOtPay = Math.max(0, high);
+    }
+
+    const getWdPay = (h) => {
+      if (h <= 0) return 0;
+      const h150 = Math.min(h, 1);
+      const h200 = Math.max(0, h - 1);
+      return (h150 * 1.5 + h200 * 2.0) * rate;
+    };
+
+    const getHolPay = (h) => {
+      if (h <= 0) return 0;
+      const h200 = Math.min(h, 8);
+      const h300 = Math.min(Math.max(0, h - 8), 1);
+      const h400 = Math.max(0, h - 9);
+      return (h200 * 2.0 + h300 * 3.0 + h400 * 4.0) * rate;
+    };
+
+    let bestWd = [];
+    let bestHol = [];
+    let bestTotal = 0;
+    let bestDiff = Infinity;
+
+    if (solveStrategy === 'weekday') {
+      const unit2h = getWdPay(2);
+      let days = Math.floor(requiredOtPay / unit2h);
+      let rem = requiredOtPay - (days * unit2h);
+      let wd = Array(days).fill(2);
+      if (rem > 0) {
+        let extraHours = Math.min(24, Math.round((rem / (rate * 2)) * 2) / 2);
+        if (extraHours > 0) wd.push(extraHours);
+      }
+      let tot = wd.reduce((s, h) => s + getWdPay(h), 0);
+      bestWd = wd;
+      bestHol = [];
+      bestTotal = tot;
+      bestDiff = Math.abs(tot - requiredOtPay);
+    } else if (solveStrategy === 'weekend') {
+      const unit8h = getHolPay(8);
+      let days = Math.floor(requiredOtPay / unit8h);
+      let rem = requiredOtPay - (days * unit8h);
+      let hol = Array(days).fill(8);
+      if (rem > 0) {
+        let extraHours = Math.min(24, Math.round((rem / (rate * 2)) * 2) / 2);
+        if (extraHours > 0) hol.push(extraHours);
+      }
+      let tot = hol.reduce((s, h) => s + getHolPay(h), 0);
+      bestWd = [];
+      bestHol = hol;
+      bestTotal = tot;
+      bestDiff = Math.abs(tot - requiredOtPay);
+    } else {
+      // Mixed Strategy
+      const hol8 = getHolPay(8);
+      let holCount = Math.min(2, Math.floor(requiredOtPay / hol8));
+      let rem = requiredOtPay - (holCount * hol8);
+      const wd2 = getWdPay(2);
+      let wdCount = Math.floor(rem / wd2);
+      let rem2 = rem - (wdCount * wd2);
+      let wd = Array(wdCount).fill(2);
+      let hol = Array(holCount).fill(8);
+      if (rem2 > 0) {
+        let extraH = Math.min(24, Math.round((rem2 / (rate * 2)) * 2) / 2);
+        if (extraH > 0) wd.push(extraH);
+      }
+      let tot = wd.reduce((s, h) => s + getWdPay(h), 0) + hol.reduce((s, h) => s + getHolPay(h), 0);
+      bestWd = wd;
+      bestHol = hol;
+      bestTotal = tot;
+      bestDiff = Math.abs(tot - requiredOtPay);
+    }
+
+    setSolvedResult({
+      targetInput: target,
+      requiredOtPay,
+      weekday: bestWd,
+      holiday: bestHol,
+      calculatedOtPay: bestTotal,
+      diff: bestDiff
+    });
+  };
+
+  const applySolvedResult = () => {
+    if (!solvedResult) return;
+    setWeekdayEntries(solvedResult.weekday.map(h => ({ hours: String(h) })));
+    setHolidayEntries(solvedResult.holiday.map(h => ({ hours: String(h) })));
+    setShowReverseModal(false);
+  };
+
   // Independent Privacy Helpers
   const renderGrossAmount = (amount, maskText = 'Rp •••••••••') => {
     if (showGrossPrivacy) {
       return formatCurrency(amount);
     }
     return (
-      <span
+      <span 
         onClick={(e) => { e.stopPropagation(); setShowGrossPrivacy(true); }}
         className="inline-block font-mono tracking-widest text-slate-300 dark:text-slate-500 filter blur-[2.5px] select-none cursor-pointer hover:blur-none transition-all duration-200"
         title="Klik untuk membuka Total Bruto"
@@ -275,7 +412,7 @@ export default function OvertimeCalculator() {
       return formatCurrency(amount);
     }
     return (
-      <span
+      <span 
         onClick={(e) => { e.stopPropagation(); setShowTaxCardPrivacy(true); }}
         className="inline-block font-mono tracking-widest text-slate-300 dark:text-slate-500 filter blur-[2.5px] select-none cursor-pointer hover:blur-none transition-all duration-200"
         title="Klik untuk membuka nominal PPh 21 / Take Home Pay"
@@ -288,7 +425,7 @@ export default function OvertimeCalculator() {
   // --- EXCEL DOWNLOAD ---
   const downloadExcel = () => {
     const wb = XLSX.utils.book_new();
-
+    
     const summaryData = [
       ["RINGKASAN ESTIMASI GAJI & LEMBUR", ""],
       ["Tanggal", new Date().toLocaleDateString('id-ID')],
@@ -360,6 +497,18 @@ export default function OvertimeCalculator() {
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+            {/* Reverse Overtime Pay Solver Button */}
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={() => setShowReverseModal(true)}
+              title="Cari jam lembur otomatis dari nominal aktual slip gaji"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm"
+            >
+              <Target className="w-3.5 h-3.5 mr-1.5" />
+              Cari Jam (Reverse Solver)
+            </Button>
+
             <Button variant="outline" size="sm" onClick={handleReset} title="Reset semua data">
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
               Reset
@@ -383,19 +532,31 @@ export default function OvertimeCalculator() {
       {/* Main Fullscreen Dashboard Workspace */}
       <main className="max-w-[1700px] mx-auto p-4 md:p-6 lg:p-8">
         {/* Info Banner */}
-        <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs md:text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
-            <span className="font-bold">⚠️ Perhitungan Estimasi:</span> Silahkan sesuaikan jam lembur di Weekend / Weekday dalam kelipatan 0,5 atau 1 jam untuk hasil optimal.
+        <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs md:text-sm text-amber-900 dark:text-amber-200 leading-relaxed">
+              <span className="font-bold">⚠️ Perhitungan Estimasi:</span> Silahkan sesuaikan jam lembur di Weekend / Weekday dalam kelipatan 0,5 atau 1 jam untuk hasil optimal. 
+              Punya nominal aktual slip gaji? Gunakan fitur <span className="font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer underline" onClick={() => setShowReverseModal(true)}>Cari Jam (Reverse Solver)</span>.
+            </div>
           </div>
+          <Button 
+            variant="outline" 
+            size="xs"
+            onClick={() => setShowReverseModal(true)}
+            className="text-xs font-bold text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 bg-white/60 dark:bg-slate-900/60 shrink-0"
+          >
+            <Target className="w-3.5 h-3.5 mr-1" />
+            Cari Jam
+          </Button>
         </div>
 
         {/* 12-Column Responsive Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
+          
           {/* LEFT COLUMN: Input Forms & Overtime Entry Grids (7 Cols) */}
           <div className="lg:col-span-7 space-y-6">
-
+            
             {/* Salary & Configuration Card */}
             <Card>
               <CardHeader className="pb-4">
@@ -495,7 +656,7 @@ export default function OvertimeCalculator() {
                       <CardDescription>Senin - Kamis (Progresif: Jam 1 @ 150%, Jam 2+ @ 200%)</CardDescription>
                     </div>
                   </div>
-
+                  
                   {/* Quick Choice Buttons: 1H, 2H, 3H, 4H, 5H */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[11px] text-slate-400 font-medium hidden sm:inline-block">Quick Add:</span>
@@ -526,8 +687,8 @@ export default function OvertimeCalculator() {
                 ) : (
                   <div className="flex flex-wrap gap-2.5 items-center">
                     {weekdayEntries.map((entry, idx) => (
-                      <div
-                        key={idx}
+                      <div 
+                        key={idx} 
                         className="flex items-center gap-1.5 p-1.5 px-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors"
                       >
                         <span className="text-[11px] font-semibold text-slate-500 w-10 text-center">H-{idx + 1}</span>
@@ -623,8 +784,8 @@ export default function OvertimeCalculator() {
                 ) : (
                   <div className="flex flex-wrap gap-2.5 items-center">
                     {holidayEntries.map((entry, idx) => (
-                      <div
-                        key={idx}
+                      <div 
+                        key={idx} 
                         className="flex items-center gap-1.5 p-1.5 px-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xs hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
                       >
                         <span className="text-[11px] font-semibold text-slate-500 w-10 text-center">H-{idx + 1}</span>
@@ -748,7 +909,7 @@ export default function OvertimeCalculator() {
                         </button>
                       </div>
 
-                      <p
+                      <p 
                         onClick={() => setShowGrossPrivacy(!showGrossPrivacy)}
                         className="text-2xl font-black cursor-pointer hover:opacity-90 transition-opacity"
                         title="Klik untuk toggle privasi Total Bruto"
@@ -790,7 +951,7 @@ export default function OvertimeCalculator() {
                       <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
                         Kategori PTKP
                       </label>
-                      <select
+                      <select 
                         value={ptkpCategory}
                         onChange={(e) => setPtkpCategory(e.target.value)}
                         className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1.5 text-slate-900 dark:text-slate-100 font-medium outline-none focus:ring-1 focus:ring-indigo-500"
@@ -869,7 +1030,7 @@ export default function OvertimeCalculator() {
                       </button>
                     </div>
 
-                    <p
+                    <p 
                       onClick={() => setShowTaxCardPrivacy(!showTaxCardPrivacy)}
                       className="text-2xl md:text-3xl font-black cursor-pointer hover:opacity-90 transition-opacity mt-1"
                       title="Klik untuk toggle privasi"
@@ -890,7 +1051,7 @@ export default function OvertimeCalculator() {
                       <span>📋</span> Rumus Perhitungan
                     </CardTitle>
                     <CardDescription className="text-[11px] text-amber-700 dark:text-amber-300 font-medium mt-1">
-                      💡 Rate per jam = Gaji ÷ 173 ({formatCurrency(hourlyRate)}). Weekday: 150-200% | Weekend: 200-400%
+                      💡 Hint: Rate per jam = Gaji ÷ 173 ({formatCurrency(hourlyRate)}). Weekday: 150-200% | Weekend: 200-400%
                     </CardDescription>
                   </div>
 
@@ -949,6 +1110,167 @@ export default function OvertimeCalculator() {
 
         </div>
       </main>
+
+      {/* --- REVERSE OVERTIME SOLVER MODAL --- */}
+      {showReverseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/50 dark:to-purple-950/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    Reverse Overtime Solver
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Cari kombinasi jam lembur dari nominal aktual slip gaji
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setShowReverseModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {/* Target Type Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  1. Pilih Jenis Nominal Target:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('overtime')}
+                    className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
+                      targetType === 'overtime'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold">💰 Total Lembur</span>
+                    <span className="text-[10px] text-slate-500">Berdasarkan nominal lembur diterima</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('net')}
+                    className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
+                      targetType === 'net'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold">💵 Take Home Pay (Bersih)</span>
+                    <span className="text-[10px] text-slate-500">Berdasarkan total gaji bersih ditransfer</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Amount Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  2. Masukkan Nominal Aktual Slip Gaji (Rp):
+                </label>
+                <Input
+                  type="text"
+                  value={formatNumberWithDots(targetAmountInput)}
+                  onChange={(e) => setTargetAmountInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder={targetType === 'overtime' ? "Contoh: 1.500.000" : "Contoh: 8.500.000"}
+                  className="font-bold text-sm"
+                />
+              </div>
+
+              {/* Strategy Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  3. Pola Jam Lembur Yang Diinginkan:
+                </label>
+                <select
+                  value={solveStrategy}
+                  onChange={(e) => setSolveStrategy(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-2 font-medium"
+                >
+                  <option value="mixed">⚡ Kombinasi Seimbang (Weekday 2h + Weekend 8h)</option>
+                  <option value="weekday">📅 Hanya Weekday (Senin - Kamis)</option>
+                  <option value="weekend">🏖️ Hanya Weekend / Libur (Jumat - Minggu)</option>
+                </select>
+              </div>
+
+              <Button
+                variant="default"
+                size="default"
+                onClick={handleSolveOvertime}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md mt-2"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Cari Kombinasi Jam Lembur
+              </Button>
+
+              {/* Solved Results Section */}
+              {solvedResult && (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-indigo-200 dark:border-indigo-900/60 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">Hasil Kalkulasi Kombinasi:</span>
+                    <Badge variant="emerald" className="text-[11px]">
+                      Akurasi Tepat
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Estimasi Lembur Dihasilkan:</span>
+                      <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                        {formatCurrency(solvedResult.calculatedOtPay)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-[11px] text-slate-500">
+                      <span>Selisih dengan Target:</span>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        {formatCurrency(solvedResult.diff)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Calculated Entries List */}
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 text-xs">
+                    {solvedResult.weekday.length > 0 && (
+                      <p className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                        • Weekday: {solvedResult.weekday.length} hari ({solvedResult.weekday.join(' jam, ')} jam)
+                      </p>
+                    )}
+                    {solvedResult.holiday.length > 0 && (
+                      <p className="text-blue-700 dark:text-blue-400 font-semibold">
+                        • Weekend: {solvedResult.holiday.length} hari ({solvedResult.holiday.join(' jam, ')} jam)
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="emerald"
+                    size="default"
+                    onClick={applySolvedResult}
+                    className="w-full font-bold text-xs shadow-md"
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Terapkan Hasil ke Tabel Lembur Utama
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
