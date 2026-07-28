@@ -351,12 +351,17 @@ export default function OvertimeCalculator() {
         let roundedH = Math.round(highH / stepVal) * stepVal;
         roundedH = Math.max(stepVal, Math.min(24, Math.round(roundedH * 100) / 100));
         let pay = days * getWdPay(roundedH);
-        let diff = Math.abs(pay - requiredOtPay);
-        if (diff < bestDiff) {
+        let rawDiff = Math.abs(pay - requiredOtPay);
+        let realismPenalty = 0;
+        if (roundedH > 5) realismPenalty += (roundedH - 5) * 50000;
+        if (roundedH < 1.5) realismPenalty += (1.5 - roundedH) * 10000;
+        let totalScore = rawDiff + realismPenalty;
+
+        if (totalScore < bestDiff) {
           bestWd = Array(days).fill(roundedH);
           bestHol = [];
           bestTotal = pay;
-          bestDiff = diff;
+          bestDiff = totalScore;
         }
       }
     } else if (solveStrategy === 'weekend') {
@@ -405,12 +410,18 @@ export default function OvertimeCalculator() {
           let roundedH = Math.round(highH / stepVal) * stepVal;
           roundedH = Math.max(stepVal, Math.min(24, Math.round(roundedH * 100) / 100));
           let pay = holPay8 + wdDays * getWdPay(roundedH);
-          let diff = Math.abs(pay - requiredOtPay);
-          if (diff < bestDiff) {
+          let rawDiff = Math.abs(pay - requiredOtPay);
+          // Realism penalty: prefer per-day hours between 2h and 4.5h over an unrealistic > 5h single day
+          let realismPenalty = 0;
+          if (roundedH > 5) realismPenalty += (roundedH - 5) * 50000;
+          if (roundedH < 1.5) realismPenalty += (1.5 - roundedH) * 10000;
+          
+          let totalScore = rawDiff + realismPenalty;
+          if (totalScore < bestDiff) {
             bestWd = Array(wdDays).fill(roundedH);
             bestHol = Array(holDays).fill(8);
             bestTotal = pay;
-            bestDiff = diff;
+            bestDiff = totalScore;
           }
         }
       }
