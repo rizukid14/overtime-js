@@ -19,7 +19,7 @@ import {
   Sparkles,
   X,
   CheckCircle2,
-  ArrowRight
+  Sliders
 } from 'lucide-react';
 import { TER_CATEGORIES } from './terData';
 import * as XLSX from 'xlsx';
@@ -52,6 +52,7 @@ export default function OvertimeCalculator() {
   const [targetAmountInput, setTargetAmountInput] = useState('');
   const [targetType, setTargetType] = useState('overtime'); // 'overtime' or 'net'
   const [solveStrategy, setSolveStrategy] = useState('mixed'); // 'weekday', 'weekend', 'mixed'
+  const [solvePrecision, setSolvePrecision] = useState('exact'); // 'exact' (0.01h), 'quarter' (0.25h), 'half' (0.5h)
   const [solvedResult, setSolvedResult] = useState(null);
 
   const [darkMode, setDarkMode] = useState(() => {
@@ -117,9 +118,9 @@ export default function OvertimeCalculator() {
   };
 
   const updateEntry = (type, index, value) => {
-    // Sanitize to max 2 digits / valid hours (0-24)
+    // Sanitize to max 4 chars / valid hours (0-24)
     let sanitized = value.replace(/[^0-9.]/g, '');
-    if (sanitized.length > 4) sanitized = sanitized.slice(0, 4);
+    if (sanitized.length > 5) sanitized = sanitized.slice(0, 5);
     const numVal = parseFloat(sanitized);
     if (numVal > 24) sanitized = '24';
 
@@ -269,7 +270,17 @@ export default function OvertimeCalculator() {
     }).format(num || 0);
   };
 
-  // --- REVERSE SOLVER ALGORITHM ---
+  // Helper to format hours e.g. 2.25 -> "2 jam 15 m (2.25h)"
+  const formatHoursDisplay = (hours) => {
+    const num = parseFloat(hours) || 0;
+    const h = Math.floor(num);
+    const m = Math.round((num - h) * 60);
+    if (m === 0) return `${h} jam`;
+    if (h === 0) return `${m}m (${num}h)`;
+    return `${h} jam ${m}m (${num}h)`;
+  };
+
+  // --- HIGH-PRECISION REVERSE SOLVER ALGORITHM ---
   const handleSolveOvertime = () => {
     const rate = hourlyRate;
     const target = parseFloat(targetAmountInput.replace(/\D/g, '')) || 0;
@@ -289,7 +300,7 @@ export default function OvertimeCalculator() {
     if (targetType === 'net') {
       const basePlusAdd = (parseFloat(basicSalary) || 0) + (parseFloat(additionalSalary) || 0);
       let low = 0, high = 100000000;
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 60; i++) {
         let mid = (low + high) / 2;
         let testGross = basePlusAdd + mid;
         let testTaxable = testGross + totalBpjsCo;
@@ -320,58 +331,90 @@ export default function OvertimeCalculator() {
       return (h200 * 2.0 + h300 * 3.0 + h400 * 4.0) * rate;
     };
 
+    let stepVal = 0.01; // default exact
+    if (solvePrecision === 'quarter') stepVal = 0.25;
+    if (solvePrecision === 'half') stepVal = 0.5;
+
     let bestWd = [];
     let bestHol = [];
     let bestTotal = 0;
     let bestDiff = Infinity;
 
     if (solveStrategy === 'weekday') {
-      const unit2h = getWdPay(2);
-      let days = Math.floor(requiredOtPay / unit2h);
-      let rem = requiredOtPay - (days * unit2h);
-      let wd = Array(days).fill(2);
-      if (rem > 0) {
-        let extraHours = Math.min(24, Math.round((rem / (rate * 2)) * 2) / 2);
-        if (extraHours > 0) wd.push(extraHours);
+      for (let days = 1; days <= 20; days++) {
+        let lowH = 0.1, highH = 24.0;
+        for (let i = 0; i < 50; i++) {
+          let midH = (lowH + highH) / 2;
+          let pay = days * getWdPay(midH);
+          if (pay < requiredOtPay) lowH = midH;
+          else highH = midH;
+        }
+        let roundedH = Math.round(highH / stepVal) * stepVal;
+        roundedH = Math.max(stepVal, Math.min(24, Math.round(roundedH * 100) / 100));
+        let pay = days * getWdPay(roundedH);
+        let diff = Math.abs(pay - requiredOtPay);
+        if (diff < bestDiff) {
+          bestWd = Array(days).fill(roundedH);
+          bestHol = [];
+          bestTotal = pay;
+          bestDiff = diff;
+        }
       }
-      let tot = wd.reduce((s, h) => s + getWdPay(h), 0);
-      bestWd = wd;
-      bestHol = [];
-      bestTotal = tot;
-      bestDiff = Math.abs(tot - requiredOtPay);
     } else if (solveStrategy === 'weekend') {
-      const unit8h = getHolPay(8);
-      let days = Math.floor(requiredOtPay / unit8h);
-      let rem = requiredOtPay - (days * unit8h);
-      let hol = Array(days).fill(8);
-      if (rem > 0) {
-        let extraHours = Math.min(24, Math.round((rem / (rate * 2)) * 2) / 2);
-        if (extraHours > 0) hol.push(extraHours);
+      for (let days = 1; days <= 12; days++) {
+        let lowH = 0.1, highH = 24.0;
+        for (let i = 0; i < 50; i++) {
+          let midH = (lowH + highH) / 2;
+          let pay = days * getHolPay(midH);
+          if (pay < requiredOtPay) lowH = midH;
+          else highH = midH;
+        }
+        let roundedH = Math.round(highH / stepVal) * stepVal;
+        roundedH = Math.max(stepVal, Math.min(24, Math.round(roundedH * 100) / 100));
+        let pay = days * getHolPay(roundedH);
+        let diff = Math.abs(pay - requiredOtPay);
+        if (diff < bestDiff) {
+          bestWd = [];
+          bestHol = Array(days).fill(roundedH);
+          bestTotal = pay;
+          bestDiff = diff;
+        }
       }
-      let tot = hol.reduce((s, h) => s + getHolPay(h), 0);
-      bestWd = [];
-      bestHol = hol;
-      bestTotal = tot;
-      bestDiff = Math.abs(tot - requiredOtPay);
     } else {
-      // Mixed Strategy
-      const hol8 = getHolPay(8);
-      let holCount = Math.min(2, Math.floor(requiredOtPay / hol8));
-      let rem = requiredOtPay - (holCount * hol8);
-      const wd2 = getWdPay(2);
-      let wdCount = Math.floor(rem / wd2);
-      let rem2 = rem - (wdCount * wd2);
-      let wd = Array(wdCount).fill(2);
-      let hol = Array(holCount).fill(8);
-      if (rem2 > 0) {
-        let extraH = Math.min(24, Math.round((rem2 / (rate * 2)) * 2) / 2);
-        if (extraH > 0) wd.push(extraH);
+      // Mixed Strategy: Weekday + Weekend
+      for (let holDays = 1; holDays <= 4; holDays++) {
+        for (let wdDays = 1; wdDays <= 15; wdDays++) {
+          let holPay8 = holDays * getHolPay(8);
+          let remPay = Math.max(0, requiredOtPay - holPay8);
+          if (remPay === 0) {
+            let diff = Math.abs(holPay8 - requiredOtPay);
+            if (diff < bestDiff) {
+              bestWd = [];
+              bestHol = Array(holDays).fill(8);
+              bestTotal = holPay8;
+              bestDiff = diff;
+            }
+            continue;
+          }
+          let lowH = 0.1, highH = 24.0;
+          for (let i = 0; i < 50; i++) {
+            let midH = (lowH + highH) / 2;
+            let pay = holPay8 + wdDays * getWdPay(midH);
+            if (pay < requiredOtPay) lowH = midH;
+            else highH = midH;
+          }
+          let roundedH = Math.round(highH / stepVal) * stepVal;
+          roundedH = Math.max(stepVal, Math.min(24, Math.round(roundedH * 100) / 100));
+          let pay = holPay8 + wdDays * getWdPay(roundedH);
+          let diff = Math.abs(pay - requiredOtPay);
+          if (diff < bestDiff) {
+            bestWd = Array(wdDays).fill(roundedH);
+            bestHol = Array(holDays).fill(8);
+            bestTotal = pay;
+            bestDiff = diff;
+          }
+        }
       }
-      let tot = wd.reduce((s, h) => s + getWdPay(h), 0) + hol.reduce((s, h) => s + getHolPay(h), 0);
-      bestWd = wd;
-      bestHol = hol;
-      bestTotal = tot;
-      bestDiff = Math.abs(tot - requiredOtPay);
     }
 
     setSolvedResult({
@@ -696,7 +739,7 @@ export default function OvertimeCalculator() {
                           type="number"
                           min="0"
                           max="24"
-                          step="0.5"
+                          step="0.01"
                           placeholder="0"
                           value={entry.hours}
                           onChange={(e) => updateEntry('weekday', idx, e.target.value)}
@@ -793,7 +836,7 @@ export default function OvertimeCalculator() {
                           type="number"
                           min="0"
                           max="24"
-                          step="0.5"
+                          step="0.01"
                           placeholder="0"
                           value={entry.hours}
                           onChange={(e) => updateEntry('holiday', idx, e.target.value)}
@@ -1111,7 +1154,7 @@ export default function OvertimeCalculator() {
         </div>
       </main>
 
-      {/* --- REVERSE OVERTIME SOLVER MODAL --- */}
+      {/* --- HIGH PRECISION REVERSE OVERTIME SOLVER MODAL --- */}
       {showReverseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
@@ -1123,10 +1166,10 @@ export default function OvertimeCalculator() {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-base">
-                    Reverse Overtime Solver
+                    Reverse Overtime Solver (Presisi Tinggi)
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Cari kombinasi jam lembur dari nominal aktual slip gaji
+                    Cari kombinasi jam lembur eksak dari nominal aktual slip gaji
                   </p>
                 </div>
               </div>
@@ -1158,7 +1201,7 @@ export default function OvertimeCalculator() {
                     }`}
                   >
                     <span className="block text-xs font-bold">💰 Total Lembur</span>
-                    <span className="text-[10px] text-slate-500">Berdasarkan nominal lembur diterima</span>
+                    <span className="text-[10px] text-slate-500">Nominal lembur kotor di slip</span>
                   </button>
 
                   <button
@@ -1171,7 +1214,7 @@ export default function OvertimeCalculator() {
                     }`}
                   >
                     <span className="block text-xs font-bold">💵 Take Home Pay (Bersih)</span>
-                    <span className="text-[10px] text-slate-500">Berdasarkan total gaji bersih ditransfer</span>
+                    <span className="text-[10px] text-slate-500">Total bersih ditransfer di bank</span>
                   </button>
                 </div>
               </div>
@@ -1185,7 +1228,7 @@ export default function OvertimeCalculator() {
                   type="text"
                   value={formatNumberWithDots(targetAmountInput)}
                   onChange={(e) => setTargetAmountInput(e.target.value.replace(/\D/g, ''))}
-                  placeholder={targetType === 'overtime' ? "Contoh: 1.500.000" : "Contoh: 8.500.000"}
+                  placeholder={targetType === 'overtime' ? "Contoh: 1.487.320" : "Contoh: 8.487.320"}
                   className="font-bold text-sm"
                 />
               </div>
@@ -1200,10 +1243,58 @@ export default function OvertimeCalculator() {
                   onChange={(e) => setSolveStrategy(e.target.value)}
                   className="w-full text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-2 font-medium"
                 >
-                  <option value="mixed">⚡ Kombinasi Seimbang (Weekday 2h + Weekend 8h)</option>
+                  <option value="mixed">⚡ Kombinasi Seimbang (Weekday + Weekend)</option>
                   <option value="weekday">📅 Hanya Weekday (Senin - Kamis)</option>
                   <option value="weekend">🏖️ Hanya Weekend / Libur (Jumat - Minggu)</option>
                 </select>
+              </div>
+
+              {/* Precision Step Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                  4. Tingkat Presisi Pembulatan Jam:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSolvePrecision('exact')}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      solvePrecision === 'exact'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold">Eksak / Menit</span>
+                    <span className="text-[9px] text-slate-500">Step 0.01 jam</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSolvePrecision('quarter')}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      solvePrecision === 'quarter'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold">15 Menit</span>
+                    <span className="text-[9px] text-slate-500">Step 0.25 jam</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSolvePrecision('half')}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      solvePrecision === 'half'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-bold shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold">30 Menit</span>
+                    <span className="text-[9px] text-slate-500">Step 0.50 jam</span>
+                  </button>
+                </div>
               </div>
 
               <Button
@@ -1213,7 +1304,7 @@ export default function OvertimeCalculator() {
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md mt-2"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
-                Cari Kombinasi Jam Lembur
+                Cari Kombinasi Jam Lembur Eksak
               </Button>
 
               {/* Solved Results Section */}
@@ -1221,8 +1312,8 @@ export default function OvertimeCalculator() {
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-indigo-200 dark:border-indigo-900/60 space-y-3 animate-in fade-in duration-200">
                   <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
                     <span className="font-bold text-slate-800 dark:text-slate-200">Hasil Kalkulasi Kombinasi:</span>
-                    <Badge variant="emerald" className="text-[11px]">
-                      Akurasi Tepat
+                    <Badge variant={solvedResult.diff < 100 ? "emerald" : "blue"} className="text-[11px]">
+                      {solvedResult.diff < 100 ? "100% Eksak (Rp 0)" : `Selisih ${formatCurrency(solvedResult.diff)}`}
                     </Badge>
                   </div>
 
@@ -1235,24 +1326,34 @@ export default function OvertimeCalculator() {
                     </div>
 
                     <div className="flex justify-between text-[11px] text-slate-500">
-                      <span>Selisih dengan Target:</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                      <span>Selisih Presisi dengan Target:</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(solvedResult.diff)}
                       </span>
                     </div>
                   </div>
 
                   {/* Calculated Entries List */}
-                  <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1 text-xs">
+                  <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs">
                     {solvedResult.weekday.length > 0 && (
-                      <p className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                        • Weekday: {solvedResult.weekday.length} hari ({solvedResult.weekday.join(' jam, ')} jam)
-                      </p>
+                      <div>
+                        <p className="text-emerald-700 dark:text-emerald-400 font-bold mb-0.5">
+                          • Weekday: {solvedResult.weekday.length} Hari
+                        </p>
+                        <p className="text-slate-600 dark:text-slate-400 text-[11px]">
+                          {solvedResult.weekday.map(h => formatHoursDisplay(h)).join(', ')}
+                        </p>
+                      </div>
                     )}
                     {solvedResult.holiday.length > 0 && (
-                      <p className="text-blue-700 dark:text-blue-400 font-semibold">
-                        • Weekend: {solvedResult.holiday.length} hari ({solvedResult.holiday.join(' jam, ')} jam)
-                      </p>
+                      <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <p className="text-blue-700 dark:text-blue-400 font-bold mb-0.5">
+                          • Weekend: {solvedResult.holiday.length} Hari
+                        </p>
+                        <p className="text-slate-600 dark:text-slate-400 text-[11px]">
+                          {solvedResult.holiday.map(h => formatHoursDisplay(h)).join(', ')}
+                        </p>
+                      </div>
                     )}
                   </div>
 
