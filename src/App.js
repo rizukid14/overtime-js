@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Clock,
   Briefcase,
-  HelpCircle,
   FileSpreadsheet,
   Target,
   Sparkles,
